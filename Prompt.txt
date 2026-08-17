@@ -1,0 +1,2383 @@
+# Build a Self-Hosted Personal & Family Finance Management Application — Phase 1
+
+You are a senior full-stack engineer, backend architect, database architect, product designer, and security engineer.
+
+Your task is to design and implement **Phase 1 of a personal and family finance management application**.
+
+This is primarily a private application for personal/family use. It is not currently intended to be a SaaS product or commercial finance application.
+
+The primary objective is:
+
+> Build a reliable financial ledger and family finance management system that allows multiple family members to manage bank accounts, income, expenses, transfers, and overall household net worth without requiring complicated manual maintenance.
+
+The architecture must be designed so that future phases can add:
+
+* Android React Native application
+* SMS transaction ingestion
+* Email transaction ingestion
+* Automatic transaction classification
+* AI-assisted transaction categorization
+* Investment portfolio tracking
+* Stock and mutual-fund price synchronization
+* EPF/PPF/NPS tracking
+* Recurring financial events
+* Notifications and reminders
+* Reconciliation
+* Financial analytics
+* Advanced financial intelligence
+
+However, **do not implement these future features in Phase 1 unless explicitly required below**.
+
+---
+
+# 1. PRODUCT PHILOSOPHY
+
+The application should follow these principles:
+
+1. Financial data should have a single source of truth.
+2. Internal transfers must never be incorrectly counted as income or expenses.
+3. Every financial event should be auditable.
+4. Data should not be silently modified by automation.
+5. The application should be usable by multiple family members.
+6. Users should only see financial information they are authorized to see.
+7. The database architecture should support future automation.
+8. The system should be simple enough for a single developer to maintain.
+9. Do not over-engineer with microservices.
+10. Prefer correctness and maintainability over unnecessary abstraction.
+
+The application is fundamentally a **financial ledger + account management + household dashboard**.
+
+---
+
+# 2. RECOMMENDED TECHNOLOGY STACK
+
+Use the following stack unless there is a compelling technical reason to change something.
+
+## Frontend
+
+Use:
+
+* React
+* TypeScript
+* Next.js
+* Tailwind CSS
+* A clean component architecture
+* Responsive design
+
+The web application must work well on:
+
+* Desktop
+* Laptop
+* Tablet
+* Mobile browser
+
+Do not build a separate React Native application in Phase 1.
+
+The mobile application will be developed in a later phase.
+
+---
+
+# 3. BACKEND
+
+Use:
+
+* Node.js
+* TypeScript
+* REST API
+* PostgreSQL
+
+Prefer a clean modular backend structure.
+
+Recommended backend organization:
+
+```text
+backend/
+├── src/
+│   ├── modules/
+│   │   ├── auth/
+│   │   ├── users/
+│   │   ├── households/
+│   │   ├── accounts/
+│   │   ├── transactions/
+│   │   ├── categories/
+│   │   ├── transfers/
+│   │   ├── dashboard/
+│   │   └── imports/
+│   │
+│   ├── database/
+│   ├── middleware/
+│   ├── services/
+│   ├── utils/
+│   ├── config/
+│   └── app.ts
+```
+
+You may use Prisma, Drizzle, or another mature PostgreSQL ORM/query layer, but choose one and use it consistently.
+
+Prefer Prisma if there is no other strong reason.
+
+---
+
+# 4. DATABASE
+
+Use PostgreSQL.
+
+The database schema is extremely important.
+
+Before implementing the UI, design and validate the database schema.
+
+The database must support:
+
+* Multiple users
+* Multiple households
+* Multiple financial accounts per user
+* Shared accounts
+* Income
+* Expenses
+* Transfers
+* Categories
+* Transaction statuses
+* Transaction metadata
+* Attachments/receipts in the future
+* Import sources
+* Auditability
+* Future investment accounts
+* Future automated transaction ingestion
+
+Do not create an unnecessarily complex accounting system, but do not use a simplistic `income` and `expense` table either.
+
+---
+
+# 5. CORE DATABASE MODEL
+
+Use the following conceptual model.
+
+## User
+
+Represents an authenticated application user.
+
+Important fields:
+
+```text
+id
+email
+name
+avatar_url
+status
+created_at
+updated_at
+last_login_at
+```
+
+Passwords/authentication should preferably be delegated to a mature authentication provider/system rather than implementing password hashing and authentication manually.
+
+---
+
+# 6. HOUSEHOLD
+
+A household represents a family financial group.
+
+Example:
+
+```text
+Household
+    ├── Mitesh
+    ├── Father
+    └── Mother
+```
+
+A user can belong to one or more households in the future.
+
+Create:
+
+```text
+households
+household_members
+```
+
+`household_members` should contain:
+
+```text
+id
+household_id
+user_id
+role
+status
+joined_at
+created_at
+updated_at
+```
+
+Roles should initially support:
+
+```text
+OWNER
+ADMIN
+MEMBER
+VIEWER
+```
+
+Design the permission system so it can be extended later.
+
+---
+
+# 7. FINANCIAL ACCOUNTS
+
+An account represents a place where money or financial value is held.
+
+Examples:
+
+```text
+HDFC Savings
+SBI Savings
+ICICI Credit Card
+Cash
+Wallet
+```
+
+Create an `accounts` table.
+
+Suggested fields:
+
+```text
+id
+household_id
+owner_user_id
+name
+account_type
+institution_name
+account_number_masked
+currency
+opening_balance
+opening_balance_date
+is_shared
+is_active
+notes
+created_at
+updated_at
+```
+
+Account types should initially support:
+
+```text
+BANK
+CASH
+WALLET
+CREDIT_CARD
+OTHER
+```
+
+Design the enum/model so future types can be added:
+
+```text
+BROKERAGE
+MUTUAL_FUND
+FD
+EPF
+PPF
+NPS
+```
+
+Do not implement investment-specific behavior yet.
+
+---
+
+# 8. ACCOUNT OWNERSHIP AND VISIBILITY
+
+The system must support both:
+
+### Personal account
+
+Example:
+
+```text
+Mitesh → HDFC Savings
+```
+
+Only Mitesh and authorized household administrators can access it.
+
+### Shared account
+
+Example:
+
+```text
+Family → Joint Bank Account
+```
+
+Multiple household members can access it.
+
+Do not assume that every account belongs equally to every household member.
+
+The database must explicitly represent ownership and sharing.
+
+If necessary, create:
+
+```text
+account_access
+```
+
+to represent user-level access.
+
+---
+
+# 9. TRANSACTION MODEL
+
+Do NOT create completely independent `income` and `expense` tables.
+
+Create a canonical transaction model.
+
+A transaction should represent a financial event.
+
+Suggested fields:
+
+```text
+id
+household_id
+account_id
+user_id
+transaction_type
+amount
+currency
+transaction_date
+description
+merchant_name
+category_id
+status
+source_type
+source_reference
+external_reference
+notes
+created_at
+updated_at
+```
+
+Transaction types:
+
+```text
+INCOME
+EXPENSE
+TRANSFER
+REFUND
+FEE
+OTHER
+```
+
+Future types may include:
+
+```text
+INVESTMENT_BUY
+INVESTMENT_SELL
+DIVIDEND
+INTEREST
+```
+
+Do not implement investment transaction types in Phase 1 unless necessary for extensibility.
+
+---
+
+# 10. TRANSACTION STATUS
+
+Transactions must support lifecycle states.
+
+Initially use:
+
+```text
+DRAFT
+CONFIRMED
+REJECTED
+VOID
+```
+
+The primary Phase 1 flow is:
+
+```text
+Create
+  ↓
+DRAFT
+  ↓
+User reviews
+  ↓
+CONFIRMED
+```
+
+Manual transactions can be created directly as `CONFIRMED` if appropriate.
+
+The reason for supporting `DRAFT` now is that future SMS/email/AI ingestion will create drafts rather than silently modifying the ledger.
+
+---
+
+# 11. TRANSACTION SOURCES
+
+Create a source model/enum.
+
+Initial sources:
+
+```text
+MANUAL
+CSV_IMPORT
+SYSTEM
+```
+
+Future sources:
+
+```text
+SMS
+EMAIL
+BANK_API
+BROKER_API
+AI
+```
+
+The database must be designed so future ingestion systems can identify where every transaction came from.
+
+---
+
+# 12. CATEGORIES
+
+Create a `categories` table rather than hardcoding categories in the frontend.
+
+Each category should support:
+
+```text
+id
+household_id nullable
+name
+type
+parent_category_id nullable
+icon
+is_system
+is_active
+created_at
+updated_at
+```
+
+Category types:
+
+```text
+EXPENSE
+INCOME
+BOTH
+```
+
+Support hierarchical categories.
+
+Example:
+
+```text
+Food
+    ├── Groceries
+    ├── Restaurants
+    └── Delivery
+
+Transportation
+    ├── Fuel
+    ├── Public Transport
+    └── Taxi
+
+Utilities
+    ├── Electricity
+    ├── Internet
+    └── Mobile
+
+Shopping
+    ├── Electronics
+    ├── Clothing
+    └── Household
+```
+
+Seed sensible default categories.
+
+Users should be able to create custom categories.
+
+---
+
+# 13. TRANSFERS — VERY IMPORTANT
+
+Transfers between accounts must be implemented as a first-class concept.
+
+Example:
+
+```text
+Mitesh HDFC
+    ↓
+₹10,000
+    ↓
+Father SBI
+```
+
+This is NOT:
+
+```text
+Mitesh Expense ₹10,000
+Father Income ₹10,000
+```
+
+It is:
+
+```text
+Mitesh account: -₹10,000
+Father account: +₹10,000
+```
+
+but both sides belong to one transfer event.
+
+Create a dedicated transfer representation.
+
+For example:
+
+```text
+transfers
+```
+
+with:
+
+```text
+id
+household_id
+source_account_id
+destination_account_id
+amount
+currency
+transfer_date
+status
+description
+reference
+created_by
+created_at
+updated_at
+```
+
+A transfer should generate two linked ledger effects:
+
+```text
+SOURCE
+- amount
+
+DESTINATION
++ amount
+```
+
+The transfer itself must not appear in:
+
+* Income totals
+* Expense totals
+* Household spending analytics
+
+It should appear in:
+
+* Account activity
+* Transfer history
+* Cash-flow movement
+* Individual account balance changes
+
+---
+
+# 14. INTERNAL FAMILY TRANSFERS
+
+The system must specifically support:
+
+```text
+Mitesh → Father
+Father → Mother
+Mother → Mitesh
+Mitesh → Joint Account
+Joint Account → Mitesh
+```
+
+The application should make it easy to select:
+
+```text
+From Account
+To Account
+Amount
+Date
+Notes
+```
+
+When selecting the destination account, clearly show the account owner.
+
+Example:
+
+```text
+From:
+Mitesh — HDFC Savings
+
+To:
+Father — SBI Savings
+
+Amount:
+₹10,000
+```
+
+After confirmation, both accounts must update correctly.
+
+---
+
+# 15. BALANCE CALCULATION
+
+Do not rely only on manually stored balances.
+
+Account balance should be derived from:
+
+```text
+Opening Balance
++
+Confirmed Income
++
+Confirmed Transfer In
++
+Refunds
+-
+Confirmed Expenses
+-
+Confirmed Transfer Out
+-
+Fees
+```
+
+Do not include:
+
+```text
+DRAFT
+REJECTED
+VOID
+```
+
+in the current balance.
+
+Be very careful about credit-card accounts.
+
+The implementation should be structured so credit-card balance semantics can be improved later.
+
+---
+
+# 16. DOUBLE-COUNTING PREVENTION
+
+This is a critical requirement.
+
+For:
+
+```text
+Mitesh HDFC
+→ Father SBI
+```
+
+the system must NOT calculate:
+
+```text
+Household Expense +₹10,000
+```
+
+and must NOT calculate:
+
+```text
+Household Income +₹10,000
+```
+
+Household net worth should remain unchanged.
+
+Only when Father spends the money should household net worth decrease.
+
+Example:
+
+```text
+Initial household net worth:
+₹10,00,000
+
+Mitesh transfers ₹10,000 to Father:
+
+Household net worth:
+₹10,00,000
+
+Father spends ₹2,000:
+
+Household net worth:
+₹9,98,000
+```
+
+Write automated tests for this behavior.
+
+---
+
+# 17. INCOME
+
+The application must allow users to record:
+
+* Salary
+* Freelance income
+* Business income
+* Interest
+* Dividend
+* Refund
+* Other income
+
+Income should contain:
+
+```text
+account
+amount
+date
+category
+description
+source
+status
+```
+
+Income should increase the account balance.
+
+---
+
+# 18. EXPENSE
+
+The application must allow users to record:
+
+* Food
+* Groceries
+* Shopping
+* Utilities
+* Rent
+* Transportation
+* Healthcare
+* Education
+* Entertainment
+* Insurance
+* Other expenses
+
+Each expense should contain:
+
+```text
+account
+amount
+date
+category
+merchant
+description
+status
+source
+```
+
+Expenses should decrease the account balance.
+
+---
+
+# 19. REFUNDS
+
+Support refunds.
+
+Example:
+
+```text
+Amazon purchase:
+- ₹2,000
+
+Refund:
++ ₹2,000
+```
+
+A refund should not be treated as a completely unrelated salary-like income.
+
+It should be associated with the original expense where possible.
+
+Design the schema to support:
+
+```text
+related_transaction_id
+```
+
+or an equivalent relationship.
+
+---
+
+# 20. CSV IMPORT
+
+CSV import is a Phase 1 requirement.
+
+Users should be able to upload a CSV file containing transactions.
+
+The system should provide:
+
+```text
+Upload
+ ↓
+Detect columns
+ ↓
+Preview
+ ↓
+Map columns
+ ↓
+Validate
+ ↓
+Detect duplicates
+ ↓
+Import
+```
+
+Support column mapping such as:
+
+```text
+Date
+Description
+Amount
+Debit
+Credit
+Reference
+Category
+```
+
+The exact CSV format will differ between banks, so do not hardcode a single bank's format.
+
+Create a reusable import pipeline.
+
+---
+
+# 21. IMPORT PREVIEW
+
+Before importing:
+
+Show:
+
+```text
+Transactions found: 142
+
+Valid: 137
+Duplicates: 4
+Invalid: 1
+```
+
+Allow the user to review problematic rows.
+
+Never silently import malformed data.
+
+---
+
+# 22. DUPLICATE DETECTION
+
+Create a mechanism for detecting duplicate imported transactions.
+
+Potential duplicate signals:
+
+```text
+Account
+Date
+Amount
+Description
+Reference
+External transaction ID
+```
+
+Use a deterministic fingerprint/hash where useful.
+
+Do not rely only on AI or fuzzy matching.
+
+The user should be able to override a duplicate decision.
+
+---
+
+# 23. AUDITABILITY
+
+Financial records should be auditable.
+
+Create an audit mechanism.
+
+At minimum track:
+
+```text
+created_by
+created_at
+updated_by
+updated_at
+```
+
+For important changes, consider an:
+
+```text
+audit_logs
+```
+
+table containing:
+
+```text
+id
+user_id
+household_id
+entity_type
+entity_id
+action
+old_values
+new_values
+created_at
+```
+
+Actions:
+
+```text
+CREATE
+UPDATE
+DELETE
+CONFIRM
+REJECT
+VOID
+IMPORT
+TRANSFER
+```
+
+Do not physically delete confirmed financial transactions unless absolutely necessary.
+
+Prefer:
+
+```text
+VOID
+```
+
+for historical records.
+
+---
+
+# 24. DASHBOARD
+
+Build a clean financial dashboard.
+
+The dashboard should show:
+
+## Net Worth
+
+```text
+Total Assets
+- Total Liabilities
+= Net Worth
+```
+
+Phase 1 may have limited liability support, so architect the dashboard to support liabilities later.
+
+---
+
+## Current Cash Position
+
+Show balances across:
+
+```text
+Bank accounts
+Cash
+Wallets
+Credit cards
+```
+
+with appropriate sign/semantics.
+
+---
+
+## Monthly Summary
+
+Show:
+
+```text
+Income
+Expenses
+Transfers
+Net Cash Flow
+```
+
+Important:
+
+Transfers must be excluded from income/expense totals.
+
+---
+
+# 25. EXPENSE ANALYTICS
+
+Show:
+
+### Monthly expenses
+
+```text
+January
+February
+March
+...
+```
+
+### Category breakdown
+
+Example:
+
+```text
+Food          ₹12,000
+Shopping       ₹8,000
+Utilities      ₹5,000
+Transport      ₹4,000
+Other          ₹3,000
+```
+
+Allow filtering by:
+
+```text
+Date
+User
+Account
+Category
+```
+
+---
+
+# 26. INCOME ANALYTICS
+
+Show:
+
+* Monthly income
+* Income by category
+* Income by family member
+* Income by account
+
+---
+
+# 27. FAMILY VIEW
+
+The dashboard should support two perspectives.
+
+### Personal view
+
+Example:
+
+```text
+Mitesh
+
+My Accounts
+My Income
+My Expenses
+My Transfers
+My Net Position
+```
+
+### Household view
+
+Example:
+
+```text
+Family
+
+Total Cash
+Total Income
+Total Expenses
+Total Net Worth
+Family Member Breakdown
+```
+
+Permissions must determine what each user can see.
+
+---
+
+# 28. TRANSACTION LIST
+
+Create a powerful transaction table.
+
+Columns:
+
+```text
+Date
+Type
+Description
+Account
+Category
+Amount
+Status
+Source
+```
+
+Filters:
+
+```text
+Date range
+Income / Expense / Transfer
+Account
+User
+Category
+Status
+Source
+```
+
+Search:
+
+```text
+merchant
+description
+reference
+```
+
+Sorting:
+
+```text
+Date
+Amount
+```
+
+---
+
+# 29. TRANSACTION DETAIL
+
+Clicking a transaction should show:
+
+```text
+Amount
+Type
+Date
+Account
+Category
+Merchant
+Description
+Source
+Status
+Created by
+Created at
+Updated at
+Reference
+```
+
+For transfers:
+
+```text
+From Account
+To Account
+```
+
+must both be visible.
+
+---
+
+# 30. ACCOUNT DETAIL PAGE
+
+For each account:
+
+```text
+Account name
+Owner
+Institution
+Current balance
+Account type
+Masked account number
+```
+
+Then:
+
+```text
+Transaction history
+```
+
+Show:
+
+```text
+Opening Balance
++
+Credits
+-
+Debits
+=
+Current Balance
+```
+
+Include date filters.
+
+---
+
+# 31. ACCOUNT CREATION
+
+The user should be able to create:
+
+```text
+Bank Account
+Cash
+Wallet
+Credit Card
+Other
+```
+
+Fields:
+
+```text
+Account Name
+Institution
+Account Type
+Owner
+Account Number
+Opening Balance
+Opening Balance Date
+Shared / Personal
+Notes
+```
+
+Sensitive account numbers should be masked in normal UI.
+
+Example:
+
+```text
+XXXX XXXX 1234
+```
+
+---
+
+# 32. USER EXPERIENCE
+
+The UI should be simple.
+
+The target user is not a financial accountant.
+
+The main navigation should be approximately:
+
+```text
+Dashboard
+Transactions
+Accounts
+Transfers
+Categories
+Imports
+Family
+Settings
+```
+
+Do not overload the application with unnecessary screens.
+
+---
+
+# 33. QUICK ACTIONS
+
+Dashboard should provide:
+
+```text
++ Add Expense
++ Add Income
++ Transfer Money
++ Add Account
++ Import Transactions
+```
+
+Transfer should be especially easy.
+
+---
+
+# 34. SECURITY
+
+This application contains highly sensitive financial information.
+
+Implement security seriously even though this is a private application.
+
+Requirements:
+
+* Authentication
+* Authorization
+* Household-level isolation
+* Account-level permissions
+* Server-side permission checks
+* Input validation
+* SQL injection protection
+* XSS protection
+* CSRF protection where applicable
+* Secure cookies/tokens
+* Environment variables for secrets
+* No secrets committed to Git
+* No sensitive information in frontend source
+* Mask sensitive account information
+* Validate every API request
+* Rate-limit sensitive endpoints where appropriate
+
+Never trust frontend permissions.
+
+The backend must independently verify:
+
+```text
+Can this user access this household?
+Can this user access this account?
+Can this user modify this transaction?
+```
+
+---
+
+# 35. MULTI-TENANCY / HOUSEHOLD ISOLATION
+
+Even though this is initially a private family application, design the database so household data is isolated.
+
+Every household-specific entity should be associated with:
+
+```text
+household_id
+```
+
+where appropriate.
+
+A user from Household A must never be able to access Household B data through an API manipulation.
+
+Write authorization tests for this.
+
+---
+
+# 36. API DESIGN
+
+Create REST APIs.
+
+Example:
+
+```text
+POST   /api/auth/...
+
+GET    /api/households
+GET    /api/households/:id
+
+GET    /api/accounts
+POST   /api/accounts
+GET    /api/accounts/:id
+PATCH  /api/accounts/:id
+POST   /api/accounts/:id/archive
+
+GET    /api/transactions
+POST   /api/transactions
+GET    /api/transactions/:id
+PATCH  /api/transactions/:id
+POST   /api/transactions/:id/confirm
+POST   /api/transactions/:id/void
+
+GET    /api/transfers
+POST   /api/transfers
+GET    /api/transfers/:id
+
+GET    /api/categories
+POST   /api/categories
+PATCH  /api/categories/:id
+
+POST   /api/imports
+GET    /api/imports/:id
+POST   /api/imports/:id/validate
+POST   /api/imports/:id/commit
+
+GET    /api/dashboard
+GET    /api/analytics/expenses
+GET    /api/analytics/income
+```
+
+Use consistent response structures and error handling.
+
+---
+
+# 37. API VALIDATION
+
+Use a schema-validation library such as Zod.
+
+Every external API input must be validated.
+
+Examples:
+
+```text
+amount > 0
+valid UUID
+valid date
+valid transaction type
+valid account
+valid category
+authorized household
+```
+
+Never trust client-side validation alone.
+
+---
+
+# 38. ERROR HANDLING
+
+Create consistent API errors.
+
+Example:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ACCOUNT_ACCESS_DENIED",
+    "message": "You do not have access to this account."
+  }
+}
+```
+
+Do not expose stack traces or database errors to users.
+
+Log detailed errors server-side.
+
+---
+
+# 39. DATABASE CONSTRAINTS
+
+Do not rely only on application logic.
+
+Use PostgreSQL constraints wherever possible.
+
+Examples:
+
+* Foreign keys
+* Unique constraints
+* NOT NULL constraints
+* Check constraints
+* Appropriate indexes
+
+Examples of useful uniqueness:
+
+```text
+household membership
+user email
+category uniqueness where appropriate
+external transaction reference where applicable
+```
+
+Do not allow orphan records.
+
+---
+
+# 40. DATABASE INDEXING
+
+Add indexes for frequently queried fields.
+
+At minimum consider:
+
+```text
+household_id
+user_id
+account_id
+category_id
+transaction_date
+transaction_type
+status
+created_at
+```
+
+For transactions, composite indexes such as:
+
+```text
+(account_id, transaction_date)
+(household_id, transaction_date)
+(household_id, status)
+```
+
+may be useful.
+
+Do not blindly index every column.
+
+---
+
+# 41. MONEY REPRESENTATION
+
+Never use floating-point numbers for money.
+
+Use PostgreSQL `NUMERIC/DECIMAL`.
+
+Example:
+
+```text
+NUMERIC(18,2)
+```
+
+or an equivalent safe monetary representation.
+
+The API should serialize monetary values consistently.
+
+Do not use JavaScript floating-point arithmetic for financial calculations where precision matters.
+
+---
+
+# 42. CURRENCY
+
+Support currency explicitly.
+
+Phase 1 can default to:
+
+```text
+INR
+```
+
+but every financial amount should conceptually have a currency.
+
+Design the system so USD or other currencies can be supported later.
+
+---
+
+# 43. DATABASE TRANSACTIONS
+
+Operations that modify multiple financial records must use database transactions.
+
+Especially:
+
+```text
+Create transfer
+Confirm transfer
+Import transactions
+Void transaction
+```
+
+For example, creating a transfer should be atomic.
+
+Either:
+
+```text
+Source debit succeeds
+AND
+Destination credit succeeds
+```
+
+or neither occurs.
+
+Never allow half-completed transfers.
+
+---
+
+# 44. TESTING
+
+Write automated tests.
+
+At minimum cover:
+
+## Account
+
+* Create account
+* Update account
+* Archive account
+* Permission checks
+
+## Transactions
+
+* Create income
+* Create expense
+* Confirm transaction
+* Reject draft
+* Void transaction
+* Balance calculation
+
+## Transfers
+
+* Transfer between own accounts
+* Transfer between family members
+* Correct source balance
+* Correct destination balance
+* No income/expense double counting
+* Atomicity
+
+## Family
+
+* User can access authorized data
+* User cannot access unauthorized account
+* Admin permissions
+* Household isolation
+
+## Imports
+
+* Valid CSV
+* Invalid CSV
+* Duplicate detection
+* Preview
+* Commit
+
+## Analytics
+
+* Monthly totals
+* Category totals
+* Transfer exclusion
+* Correct net cash flow
+
+---
+
+# 45. SEED DATA
+
+Create a development seed script.
+
+Example:
+
+```text
+Household:
+Vasoya Family
+
+Users:
+Mitesh
+Father
+Mother
+```
+
+Accounts:
+
+```text
+Mitesh HDFC Savings
+Father SBI Savings
+Mother SBI Savings
+Family Cash
+```
+
+Transactions:
+
+```text
+Salary
+Groceries
+Electricity
+Restaurant
+Family transfer
+Refund
+```
+
+Use obviously fake data.
+
+Never include real credentials or real financial information.
+
+---
+
+# 46. ENVIRONMENT CONFIGURATION
+
+Create:
+
+```text
+.env.example
+```
+
+with variables such as:
+
+```text
+DATABASE_URL=
+AUTH_SECRET=
+NEXT_PUBLIC_API_URL=
+```
+
+Do not commit `.env`.
+
+Create clear local-development setup instructions.
+
+---
+
+# 47. LOCAL DEVELOPMENT
+
+The project should be easy to start.
+
+Ideally:
+
+```text
+git clone
+npm install
+configure .env
+run database migration
+run seed
+npm run dev
+```
+
+Provide:
+
+```text
+README.md
+```
+
+with:
+
+* Architecture
+* Setup
+* Environment variables
+* Database setup
+* Migration commands
+* Seed commands
+* Test commands
+* Build commands
+* Deployment instructions
+
+---
+
+# 48. FUTURE-PROOFING REQUIREMENTS
+
+Do not implement the following now, but make sure the architecture does not prevent them.
+
+## Phase 2
+
+React Native Android application.
+
+It will eventually:
+
+```text
+Read permitted SMS
+       ↓
+Parse transaction
+       ↓
+Create transaction candidate
+       ↓
+Send to backend
+       ↓
+Draft
+       ↓
+User approval
+```
+
+## Phase 3
+
+Email ingestion:
+
+```text
+Gmail/Email
+ ↓
+Parser
+ ↓
+Transaction candidate
+ ↓
+Draft
+```
+
+## Phase 4
+
+Investments:
+
+```text
+Stocks
+Mutual Funds
+ETFs
+FD
+EPF
+PPF
+NPS
+```
+
+## Phase 5
+
+Financial intelligence:
+
+```text
+Recurring transactions
+EPF reminders
+SIP reminders
+Expected vs actual
+Monthly reports
+Anomaly detection
+AI categorization
+```
+
+The Phase 1 database should not need a complete rewrite to support these.
+
+---
+
+# 49. DO NOT IMPLEMENT YET
+
+Explicitly do NOT implement these in Phase 1:
+
+* SMS reading
+* React Native
+* Gmail integration
+* Automatic bank APIs
+* Broker APIs
+* Stock price APIs
+* Mutual fund NAV APIs
+* AI transaction classification
+* Password manager
+* Bank login credential storage
+* OTP storage
+* Microservices
+* Kubernetes
+* Kafka
+* Complex event-driven architecture
+* Real-time stock prices
+* Automated financial advice
+
+Build the foundation first.
+
+---
+
+# 50. DESIGN FOR FUTURE INGESTION
+
+Although SMS/email ingestion is not being implemented now, create an abstraction that future ingestion systems can use.
+
+Conceptually:
+
+```text
+TransactionCandidate
+
+source
+source_reference
+account_id
+amount
+date
+description
+merchant
+transaction_type
+confidence
+raw_metadata
+```
+
+The future pipeline should be able to create:
+
+```text
+TransactionCandidate
+        ↓
+Validation
+        ↓
+Duplicate detection
+        ↓
+DRAFT transaction
+        ↓
+User approval
+        ↓
+CONFIRMED transaction
+```
+
+Do not implement the full pipeline now unless required to support the architecture.
+
+---
+
+# 51. IMPORTANT ACCOUNTING RULES
+
+Implement these rules explicitly and test them.
+
+### Rule 1
+
+Confirmed expense decreases account balance.
+
+### Rule 2
+
+Confirmed income increases account balance.
+
+### Rule 3
+
+Transfer decreases source account.
+
+### Rule 4
+
+Transfer increases destination account.
+
+### Rule 5
+
+Transfer does not count as household income.
+
+### Rule 6
+
+Transfer does not count as household expense.
+
+### Rule 7
+
+Draft transactions do not affect balances.
+
+### Rule 8
+
+Rejected transactions do not affect balances.
+
+### Rule 9
+
+Voided transactions do not affect current balances.
+
+### Rule 10
+
+A transfer must be atomic.
+
+### Rule 11
+
+A user cannot modify another user's private account unless authorized.
+
+### Rule 12
+
+Household financial data must remain isolated.
+
+### Rule 13
+
+Money calculations must use precise decimal arithmetic.
+
+---
+
+# 52. NET WORTH MODEL
+
+For Phase 1, calculate:
+
+```text
+Net Worth =
+Cash/Bank Assets
+-
+Supported Liabilities
+```
+
+Investment assets will be added in a later phase.
+
+However, create the architecture so the calculation can later become:
+
+```text
+Net Worth =
+Bank
++ Cash
++ Stocks
++ Mutual Funds
++ ETFs
++ FD
++ EPF
++ PPF
++ NPS
++ Other Assets
+-
+Loans
+-
+Credit Card Liabilities
+-
+Other Liabilities
+```
+
+Do not hardcode the Phase 1 dashboard in a way that prevents this.
+
+---
+
+# 53. UI QUALITY
+
+The application should look like a polished modern finance application.
+
+Requirements:
+
+* Clean typography
+* Good spacing
+* Responsive layout
+* Clear monetary formatting
+* Positive/negative values visually distinguishable
+* Good empty states
+* Loading states
+* Error states
+* Confirmation dialogs for destructive actions
+* Toast notifications
+* Accessible forms
+* Keyboard-friendly desktop interaction
+* Mobile-friendly responsive UI
+
+Do not create excessive visual decoration.
+
+Prioritize usability.
+
+---
+
+# 54. MONETARY FORMATTING
+
+Use Indian formatting.
+
+Examples:
+
+```text
+₹1,000
+₹10,000
+₹1,00,000
+₹10,00,000
+₹1,25,50,000
+```
+
+Support decimals where appropriate:
+
+```text
+₹1,250.50
+```
+
+Use consistent formatting throughout the application.
+
+---
+
+# 55. DASHBOARD EXAMPLE
+
+A typical dashboard should approximately contain:
+
+```text
+--------------------------------------------------
+Vasoya Family Finance
+
+Net Worth
+₹12,45,000
+
+This Month
+Income          ₹85,000
+Expenses        ₹42,300
+Investments     ₹20,000
+Cash Flow       ₹22,700
+
+--------------------------------------------------
+
+Accounts
+
+Mitesh — HDFC
+₹72,400
+
+Father — SBI
+₹1,25,000
+
+Mother — SBI
+₹85,000
+
+Cash
+₹12,000
+
+--------------------------------------------------
+
+Monthly Expenses
+
+Food             ₹8,500
+Shopping         ₹7,200
+Utilities        ₹5,400
+Transport        ₹3,800
+Other            ₹17,400
+
+--------------------------------------------------
+
+Recent Transactions
+
+17 Aug   Salary             +₹85,000
+17 Aug   Swiggy              -₹850
+16 Aug   Transfer to Father -₹10,000
+16 Aug   Electricity         -₹2,400
+
+--------------------------------------------------
+```
+
+This is only a conceptual example. Improve the UX as appropriate.
+
+---
+
+# 56. DEVELOPMENT PROCESS
+
+Do not immediately generate thousands of lines of code.
+
+Follow this sequence:
+
+## Step 1 — Architecture
+
+First produce:
+
+* System architecture
+* Database ERD
+* Database schema
+* Entity relationships
+* Important constraints
+* API architecture
+* Folder structure
+* Authentication strategy
+* Authorization strategy
+
+## Step 2 — Validate architecture
+
+Review the design for:
+
+* Double counting
+* Transfer handling
+* Balance calculation
+* Household isolation
+* Permissions
+* Future investment compatibility
+* Future ingestion compatibility
+
+Fix architectural problems before implementation.
+
+## Step 3 — Database
+
+Implement:
+
+* Migrations
+* Constraints
+* Indexes
+* Seed data
+
+## Step 4 — Backend
+
+Implement:
+
+* Authentication
+* Authorization
+* Household management
+* Accounts
+* Transactions
+* Transfers
+* Categories
+* Imports
+* Dashboard APIs
+
+## Step 5 — Tests
+
+Build the important accounting and authorization tests.
+
+## Step 6 — Frontend
+
+Implement:
+
+* Login
+* Dashboard
+* Accounts
+* Transactions
+* Add transaction
+* Transfer
+* Categories
+* Imports
+* Family management
+* Settings
+
+## Step 7 — Integration
+
+Connect frontend and backend.
+
+## Step 8 — Final validation
+
+Test the complete workflows end-to-end.
+
+---
+
+# 57. REQUIRED END-TO-END SCENARIOS
+
+The finished Phase 1 application must successfully support these scenarios.
+
+### Scenario 1 — Salary
+
+Mitesh receives:
+
+```text
+₹85,000 salary
+```
+
+into HDFC.
+
+Expected:
+
+```text
+HDFC balance +₹85,000
+Income +₹85,000
+Net cash flow +₹85,000
+```
+
+---
+
+### Scenario 2 — Expense
+
+Mitesh spends:
+
+```text
+₹850 at Swiggy
+```
+
+Expected:
+
+```text
+HDFC balance -₹850
+Expense +₹850
+```
+
+---
+
+### Scenario 3 — Family Transfer
+
+Mitesh transfers:
+
+```text
+₹10,000 → Father
+```
+
+Expected:
+
+```text
+Mitesh HDFC -₹10,000
+Father SBI +₹10,000
+
+Household income: unchanged
+Household expense: unchanged
+Household net worth: unchanged
+```
+
+---
+
+### Scenario 4 — Father's Expense
+
+Father spends:
+
+```text
+₹2,000 on groceries
+```
+
+Expected:
+
+```text
+Father SBI -₹2,000
+Household expense +₹2,000
+Household net worth -₹2,000
+```
+
+---
+
+### Scenario 5 — Refund
+
+Mitesh receives:
+
+```text
+₹1,000 refund
+```
+
+for a previous purchase.
+
+Expected:
+
+```text
+Account +₹1,000
+Refund linked to original transaction
+```
+
+---
+
+### Scenario 6 — CSV Import
+
+Upload a bank CSV.
+
+Expected:
+
+```text
+Upload
+→ Preview
+→ Validation
+→ Duplicate detection
+→ Confirmation
+→ Import
+```
+
+---
+
+### Scenario 7 — Permissions
+
+Father logs in.
+
+Expected:
+
+* Can view authorized family information.
+* Can view his own accounts.
+* Can create transactions in his accounts.
+* Cannot access unauthorized private account data.
+* Cannot modify another user's private account without permission.
+
+---
+
+# 58. CODE QUALITY
+
+Write production-quality code.
+
+Requirements:
+
+* TypeScript strict mode
+* Strong typing
+* Clear module boundaries
+* Reusable components
+* No duplicated business logic
+* No business logic hidden inside UI components
+* Service layer for important financial operations
+* Database operations isolated appropriately
+* Consistent naming
+* Meaningful error codes
+* Proper logging
+* No unnecessary abstractions
+
+Avoid:
+
+```text
+any
+```
+
+unless genuinely unavoidable.
+
+Do not suppress TypeScript errors just to make the build pass.
+
+---
+
+# 59. DOCUMENTATION
+
+Generate documentation for:
+
+```text
+README.md
+
+docs/
+├── architecture.md
+├── database.md
+├── api.md
+├── accounting-rules.md
+├── permissions.md
+└── future-roadmap.md
+```
+
+The accounting rules document is particularly important.
+
+Document exactly how:
+
+```text
+Income
+Expense
+Transfer
+Refund
+Draft
+Confirmed
+Voided
+```
+
+affect balances and analytics.
+
+---
+
+# 60. FINAL DELIVERABLE
+
+At the end of implementation, provide:
+
+1. Complete source code.
+2. Database migrations.
+3. Seed script.
+4. Environment example.
+5. README.
+6. Architecture documentation.
+7. Database documentation.
+8. API documentation.
+9. Automated tests.
+10. Working web application.
+11. Instructions to run locally.
+12. Instructions to deploy.
+
+Also provide a concise summary containing:
+
+```text
+Implemented
+Not implemented
+Known limitations
+Future recommendations
+```
+
+---
+
+# 61. MOST IMPORTANT INSTRUCTION
+
+Do not optimize for the number of features.
+
+Optimize for:
+
+```text
+CORRECTNESS
+SECURITY
+DATA INTEGRITY
+MAINTAINABILITY
+EXTENSIBILITY
+GOOD UX
+```
+
+This application will eventually contain real family financial information.
+
+Therefore, **incorrect accounting is worse than missing functionality**.
+
+If there is ever a conflict between adding a feature quickly and maintaining financial correctness, choose financial correctness.
+
+Do not invent financial assumptions.
+
+Do not silently modify transactions.
+
+Do not silently merge transactions.
+
+Do not silently classify uncertain financial events as expenses.
+
+The future automation system must be able to safely generate drafts, while the user remains the authority for uncertain financial records.
+
+---
+
+# START HERE
+
+Before writing the implementation:
+
+1. Produce the complete proposed database schema.
+2. Produce the ERD in Mermaid.
+3. Explain the accounting/ledger model.
+4. Explain exactly how transfers work.
+5. Explain how account balances are calculated.
+6. Explain household/user/account permissions.
+7. Explain the CSV import architecture.
+8. Explain the API structure.
+9. Explain the folder structure.
+10. Identify potential architectural problems.
+11. Resolve those problems.
+12. Then begin implementation.
+
+Do not skip directly to UI generation.
+
+The database and financial model must be correct first.

@@ -1,0 +1,24 @@
+{
+  "name": "pfinanc",
+  "version": "1.0.0",
+  "description": "Self-Hosted Personal & Family Finance Management Application",
+  "scripts": {
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "migrate": "npm --prefix backend run migrate",
+    "seed": "npm --prefix backend run seed",
+    "test": "npm --prefix backend test"
+  },
+  "keywords": [
+    "finance",
+    "family",
+    "ledger",
+    "personal-finance",
+    "typescript",
+    "postgres",
+    "express",
+    "react"
+  ],
+  "author": "Mitesh Vasoya",
+  "license": "MIT"
+}
