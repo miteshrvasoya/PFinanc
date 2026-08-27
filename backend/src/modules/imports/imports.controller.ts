@@ -45,8 +45,12 @@ export class ImportsController {
       const batchId = getParam(req, 'batchId');
       const householdId = getHouseholdId(req);
       const includeDuplicates = Boolean(req.body.include_duplicates);
+      const rowOverrides = req.body.row_overrides || {};
 
-      const result = await ImportsService.commitBatch(batchId, householdId, req.user!.id, includeDuplicates);
+      const result = await ImportsService.commitBatch(batchId, householdId, req.user!.id, {
+        includeDuplicates,
+        rowOverrides,
+      });
       res.json({ success: true, data: result });
     } catch (error) {
       next(error);

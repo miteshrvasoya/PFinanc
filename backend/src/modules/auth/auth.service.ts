@@ -4,7 +4,21 @@ import { QueryHelper } from '../../database/queryHelper.js';
 import { config } from '../../config/env.js';
 
 export class AuthService {
-  static async register(data: { email: string; password: string; name: string }) {
+  /**
+   * Check system status to detect fresh installations with zero users
+   */
+  static async getSystemStatus() {
+    const userCountResult = await QueryHelper.queryOne<{ count: string }>(
+      `SELECT COUNT(*)::text as count FROM users`
+    );
+    const userCount = parseInt(userCountResult?.count || '0', 10);
+    return {
+      isFirstInstall: userCount === 0,
+      userCount,
+    };
+  }
+
+  static async register(data: { email: string; password: string; name: string; household_name?: string }) {
     const existing = await QueryHelper.queryOne(`SELECT id FROM users WHERE email = $1`, [data.email.toLowerCase()]);
     if (existing) {
       const error: any = new Error('User with this email already exists');
@@ -12,6 +26,10 @@ export class AuthService {
       error.code = 'EMAIL_ALREADY_EXISTS';
       throw error;
     }
+
+    // Check if this is the very first user in the system
+    const userCountResult = await QueryHelper.queryOne<{ count: string }>(`SELECT COUNT(*)::text as count FROM users`);
+    const isFirstUser = parseInt(userCountResult?.count || '0', 10) === 0;
 
     const passwordHash = await bcrypt.hash(data.password, 10);
     const user = await QueryHelper.insert('users', {
@@ -21,9 +39,10 @@ export class AuthService {
       status: 'ACTIVE',
     });
 
-    // Create a default household for new user
+    // Create a household for new user
+    const householdName = data.household_name?.trim() || `${data.name}'s Family`;
     const household = await QueryHelper.insert('households', {
-      name: `${data.name}'s Family`,
+      name: householdName,
       default_currency: 'INR',
       created_by: user.id,
     });
@@ -35,6 +54,16 @@ export class AuthService {
       status: 'ACTIVE',
     });
 
+    // Initialize onboarding progress for this user + household
+    await QueryHelper.insert('onboarding_progress', {
+      household_id: household.id,
+      user_id: user.id,
+      current_step: 'welcome',
+      status: 'IN_PROGRESS',
+      completed_sections: JSON.stringify([]),
+      metadata: JSON.stringify({ isFirstUser }),
+    });
+
     const token = jwt.sign({ id: user.id, email: user.email }, config.jwt.secret, {
       expiresIn: (config.jwt.expiresIn || '7d') as any,
     });
@@ -43,6 +72,7 @@ export class AuthService {
       user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url },
       token,
       defaultHouseholdId: household.id,
+      isFirstUser,
     };
   }
 

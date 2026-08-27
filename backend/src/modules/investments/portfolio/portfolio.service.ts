@@ -62,7 +62,18 @@ export class PortfolioService {
    * Comprehensive portfolio valuation, asset allocation & XIRR
    */
   static async getPortfolioSummary(householdId: string, userId?: string) {
-    const [holdings, fds, retirementAccounts, rawTxns] = await Promise.all([
+    const physicalSql = `
+      SELECT 
+        asset_type,
+        SUM(purchase_cost)::float as total_cost,
+        SUM(current_value)::float as total_value
+      FROM physical_assets
+      WHERE household_id = $1 ${userId ? 'AND owner_user_id = $2' : ''}
+      GROUP BY asset_type
+    `;
+    const physicalParams = userId ? [householdId, userId] : [householdId];
+
+    const [holdings, fds, retirementAccounts, rawTxns, physicalSummary] = await Promise.all([
       HoldingsService.calculateHoldings({ householdId, userId }),
       FixedDepositsService.list(householdId, userId),
       RetirementService.listAccounts(householdId, userId),
@@ -72,6 +83,10 @@ export class PortfolioService {
          WHERE household_id = $1 AND status = 'CONFIRMED'
          ORDER BY transaction_date ASC`,
         [householdId]
+      ),
+      QueryHelper.query<{ asset_type: string; total_cost: number; total_value: number }>(
+        physicalSql,
+        physicalParams
       ),
     ]);
 
@@ -103,8 +118,24 @@ export class PortfolioService {
 
     const retirementTotal = retirementAccounts.reduce((sum, r) => sum + r.current_balance, 0);
 
-    const totalInvested = stockInvested + mfInvested + etfInvested + fdPrincipal + retirementTotal;
-    const totalCurrentValue = stockValue + mfValue + etfValue + fdCurrentValue + retirementTotal;
+    // Physical Assets (Gold, SGB, Tangible assets)
+    let physicalInvested = 0;
+    let physicalValue = 0;
+    let goldValue = 0;
+    let otherTangibleValue = 0;
+
+    physicalSummary.forEach((p) => {
+      physicalInvested += p.total_cost || 0;
+      physicalValue += p.total_value || 0;
+      if (['PHYSICAL_GOLD', 'DIGITAL_GOLD', 'SGB'].includes(p.asset_type)) {
+        goldValue += p.total_value || 0;
+      } else {
+        otherTangibleValue += p.total_value || 0;
+      }
+    });
+
+    const totalInvested = stockInvested + mfInvested + etfInvested + fdPrincipal + retirementTotal + physicalInvested;
+    const totalCurrentValue = stockValue + mfValue + etfValue + fdCurrentValue + retirementTotal + physicalValue;
     const unrealizedPnL = totalCurrentValue - totalInvested;
     const unrealizedPnLPercent = totalInvested > 0 ? (unrealizedPnL / totalInvested) * 100 : 0;
     const totalRealizedPnL = stockRealized + mfRealized + etfRealized;
@@ -147,6 +178,20 @@ export class PortfolioService {
         percent: Math.round((retirementTotal / totalAllocationBase) * 100),
         color: '#ec4899',
       },
+      {
+        label: 'Gold & Precious Metals',
+        type: 'GOLD',
+        amount: goldValue,
+        percent: Math.round((goldValue / totalAllocationBase) * 100),
+        color: '#eab308',
+      },
+      {
+        label: 'Other Physical Assets',
+        type: 'OTHER_PHYSICAL',
+        amount: otherTangibleValue,
+        percent: Math.round((otherTangibleValue / totalAllocationBase) * 100),
+        color: '#8b5cf6',
+      },
     ].filter((a) => a.amount > 0);
 
     // 3. XIRR Calculation
@@ -182,6 +227,7 @@ export class PortfolioService {
         holdingsCount: holdings.filter((h) => h.current_quantity > 0).length,
         fdCount: fds.filter((f) => f.status === 'ACTIVE').length,
         retirementCount: retirementAccounts.length,
+        physicalAssetsCount: physicalSummary.length,
       },
       breakdown: {
         stocks: { invested: stockInvested, value: stockValue, pnl: stockValue - stockInvested },
@@ -189,6 +235,7 @@ export class PortfolioService {
         etfs: { invested: etfInvested, value: etfValue, pnl: etfValue - etfInvested },
         fixedDeposits: { principal: fdPrincipal, value: fdCurrentValue, interest: fdCurrentValue - fdPrincipal },
         retirement: { total: retirementTotal },
+        physicalAssets: { invested: physicalInvested, value: physicalValue, goldValue, otherTangibleValue },
       },
       assetAllocation,
       topHoldings: holdings.filter((h) => h.current_quantity > 0).slice(0, 6),

@@ -7,6 +7,8 @@
     "dev:frontend": "npm --prefix frontend run dev",
     "migrate": "npm --prefix backend run migrate",
     "seed": "npm --prefix backend run seed",
+    "seed:dev": "npm --prefix backend run seed:dev",
+    "seed:system": "npm --prefix backend run seed:system",
     "test": "npm --prefix backend test"
   },
   "keywords": [

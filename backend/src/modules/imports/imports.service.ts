@@ -2,6 +2,7 @@ import { parse } from 'csv-parse/sync';
 import { QueryHelper } from '../../database/queryHelper.js';
 import { generateTransactionFingerprint } from '../../utils/hash.js';
 import { logAudit } from '../../utils/audit.js';
+import { ClassificationService } from '../classification/classification.service.js';
 
 export interface ColumnMapping {
   dateCol: string;
@@ -201,11 +202,18 @@ export class ImportsService {
           validCount++;
         }
 
+        // Automated Category Classification
+        const classification = await ClassificationService.classify(householdId, rawDesc, amount, parsedDate);
+
         const parsedData = {
           date: parsedDate,
           description: rawDesc,
           amount,
-          transaction_type: transactionType,
+          transaction_type: classification.transactionType || transactionType,
+          category_id: classification.categoryId,
+          category_name: classification.categoryName,
+          confidence: classification.confidence,
+          is_transfer: classification.isTransfer || false,
           reference: rawRef,
           fingerprint,
         };
@@ -245,7 +253,17 @@ export class ImportsService {
     };
   }
 
-  static async commitBatch(batchId: string, householdId: string, userId: string, includeDuplicates = false) {
+  static async commitBatch(
+    batchId: string,
+    householdId: string,
+    userId: string,
+    options: {
+      includeDuplicates?: boolean;
+      rowOverrides?: Record<string, { category_id?: string; transaction_type?: string; description?: string; save_rule?: boolean }>;
+    } = {}
+  ) {
+    const { includeDuplicates = false, rowOverrides = {} } = options;
+
     const batch = await QueryHelper.queryOne(
       `SELECT * FROM import_batches WHERE id = $1 AND household_id = $2`,
       [batchId, householdId]
@@ -277,15 +295,33 @@ export class ImportsService {
         const p = typeof r.parsed_data === 'string' ? JSON.parse(r.parsed_data) : r.parsed_data;
         if (!p || !p.date || !p.amount) continue;
 
+        const override = rowOverrides[r.id] || {};
+        const finalCategoryId = override.category_id !== undefined ? override.category_id : p.category_id;
+        const finalType = override.transaction_type || p.transaction_type || 'EXPENSE';
+        const finalDesc = override.description || p.description;
+
+        // If user requested to save rule from review
+        if (override.save_rule && finalCategoryId && finalDesc) {
+          const pattern = finalDesc.trim().split(' ')[0].toUpperCase();
+          if (pattern.length >= 3) {
+            await ClassificationService.saveRule(householdId, userId, {
+              pattern,
+              category_id: finalCategoryId,
+              transaction_type: finalType,
+            });
+          }
+        }
+
         const tx = await QueryHelper.insert('transactions', {
           household_id: householdId,
           account_id: batch.account_id,
           user_id: userId,
-          transaction_type: p.transaction_type,
+          category_id: finalCategoryId || null,
+          transaction_type: finalType,
           amount: p.amount,
           currency: 'INR',
           transaction_date: p.date,
-          description: p.description,
+          description: finalDesc,
           status: 'CONFIRMED',
           source_type: 'CSV_IMPORT',
           source_reference: batch.filename,

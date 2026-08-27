@@ -15,6 +15,7 @@ import {
   X,
   RefreshCw,
 } from 'lucide-react';
+import { EmptyState } from '../layout/EmptyState';
 
 export const AccountsView: React.FC = () => {
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -129,11 +130,13 @@ export const AccountsView: React.FC = () => {
           <span>Loading Accounts...</span>
         </div>
       ) : accounts.length === 0 ? (
-        <div className="glass-panel rounded-2xl p-12 text-center text-slate-400">
-          <Wallet className="w-12 h-12 mx-auto text-slate-600 mb-3" />
-          <p className="font-semibold text-white">No Accounts Found</p>
-          <p className="text-xs text-slate-500 mt-1">Create your first account to begin managing your ledger.</p>
-        </div>
+        <EmptyState
+          icon={Wallet}
+          title="No Financial Accounts Configured"
+          description="Add your savings accounts, cash reserves, credit cards, or digital wallets to establish your financial baseline."
+          actionLabel="Add Your First Account"
+          onAction={() => setShowAddModal(true)}
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {accounts.map((acc) => (

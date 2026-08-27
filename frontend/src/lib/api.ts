@@ -76,7 +76,11 @@ class ApiClient {
     }
   }
 
-  // Auth
+  // Auth & System Status
+  async getSystemStatus() {
+    return this.request('/auth/system-status');
+  }
+
   async login(email: string, password: string) {
     return this.request('/auth/login', {
       method: 'POST',
@@ -84,10 +88,10 @@ class ApiClient {
     });
   }
 
-  async register(email: string, password: string, name: string) {
+  async register(email: string, password: string, name: string, householdName?: string) {
     return this.request('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify({ email, password, name, household_name: householdName }),
     });
   }
 
@@ -220,7 +224,7 @@ class ApiClient {
     });
   }
 
-  // Phase 1 Bank CSV Imports
+  // Universal CSV Imports
   async previewCsv(accountId: string, file: File, columnMapping?: any) {
     const formData = new FormData();
     formData.append('account_id', accountId);
@@ -234,10 +238,15 @@ class ApiClient {
     });
   }
 
-  async commitImport(batchId: string, includeDuplicates = false) {
+  async commitImport(batchId: string, options: { includeDuplicates?: boolean; rowOverrides?: any } | boolean = {}) {
+    const includeDuplicates = typeof options === 'boolean' ? options : (options.includeDuplicates ?? false);
+    const rowOverrides = typeof options === 'object' && options.rowOverrides ? options.rowOverrides : {};
     return this.request(`/imports/commit/${batchId}`, {
       method: 'POST',
-      body: JSON.stringify({ include_duplicates: includeDuplicates }),
+      body: JSON.stringify({
+        include_duplicates: includeDuplicates,
+        row_overrides: rowOverrides,
+      }),
     });
   }
 
@@ -246,7 +255,7 @@ class ApiClient {
     return this.request(`/households/${householdId}`);
   }
 
-  async addHouseholdMember(householdId: string, memberData: { email: string; role: string }) {
+  async addHouseholdMember(householdId: string, memberData: { email: string; role: string; name?: string }) {
     return this.request(`/households/${householdId}/members`, {
       method: 'POST',
       body: JSON.stringify(memberData),
@@ -261,8 +270,122 @@ class ApiClient {
   }
 
   // ==========================================
-  // PHASE 2: INVESTMENTS & PORTFOLIO CLIENT
+  // PHASE 2 & 2.5: INVESTMENTS, ASSETS & ONBOARDING
   // ==========================================
+
+  // Onboarding Lifecycle
+  async getOnboardingStatus() {
+    return this.request('/onboarding/status');
+  }
+
+  async updateOnboardingStep(step: string, completedSection?: string, metadata?: any) {
+    return this.request('/onboarding/step', {
+      method: 'POST',
+      body: JSON.stringify({
+        step,
+        completed_section: completedSection,
+        metadata,
+      }),
+    });
+  }
+
+  async completeOnboarding() {
+    return this.request('/onboarding/complete', {
+      method: 'POST',
+    });
+  }
+
+  async skipOnboarding() {
+    return this.request('/onboarding/skip', {
+      method: 'POST',
+    });
+  }
+
+  async resetOnboarding() {
+    return this.request('/onboarding/reset', {
+      method: 'POST',
+    });
+  }
+
+  // Classification & Learning Rules
+  async classifyDescription(description: string, amount?: number, date?: string) {
+    return this.request('/classification/classify', {
+      method: 'POST',
+      body: JSON.stringify({ description, amount, date }),
+    });
+  }
+
+  async getClassificationRules() {
+    return this.request('/classification/rules');
+  }
+
+  async saveClassificationRule(data: { pattern: string; category_id: string; transaction_type?: string; match_type?: string }) {
+    return this.request('/classification/rules', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteClassificationRule(id: string) {
+    return this.request(`/classification/rules/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Physical Assets (Gold, SGB, Tangible)
+  async getPhysicalAssets(userId?: string) {
+    const query = userId ? `?user_id=${userId}` : '';
+    return this.request(`/physical-assets${query}`);
+  }
+
+  async createPhysicalAsset(data: any) {
+    return this.request('/physical-assets', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePhysicalAsset(id: string, data: any) {
+    return this.request(`/physical-assets/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePhysicalAsset(id: string) {
+    return this.request(`/physical-assets/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Family Invitations
+  async getInvitations() {
+    return this.request('/invitations');
+  }
+
+  async createInvitation(data: { email: string; name?: string; role?: string }) {
+    return this.request('/invitations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getPublicInvitation(token: string) {
+    return this.request(`/invitations/public/${token}`);
+  }
+
+  async acceptPublicInvitation(token: string, data: { name?: string; password?: string; existingUserId?: string }) {
+    return this.request(`/invitations/public/${token}/accept`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async revokeInvitation(id: string) {
+    return this.request(`/invitations/${id}/revoke`, {
+      method: 'POST',
+    });
+  }
 
   // Portfolio & Holdings
   async getPortfolioSummary(view: 'household' | 'personal' = 'household') {

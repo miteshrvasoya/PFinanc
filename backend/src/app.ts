@@ -12,6 +12,10 @@ import { importRoutes } from './modules/imports/imports.routes.js';
 import { dashboardRoutes } from './modules/dashboard/dashboard.routes.js';
 import { analyticsRoutes } from './modules/analytics/analytics.routes.js';
 import { investmentsRouter } from './modules/investments/investments.routes.js';
+import { onboardingRoutes } from './modules/onboarding/onboarding.routes.js';
+import { classificationRoutes } from './modules/classification/classification.routes.js';
+import { physicalAssetsRoutes } from './modules/physical-assets/physicalAssets.routes.js';
+import { invitationsRoutes } from './modules/invitations/invitations.routes.js';
 
 export const app = express();
 
@@ -43,6 +47,10 @@ app.use('/api/imports', importRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/investments', investmentsRouter);
+app.use('/api/onboarding', onboardingRoutes);
+app.use('/api/classification', classificationRoutes);
+app.use('/api/physical-assets', physicalAssetsRoutes);
+app.use('/api/invitations', invitationsRoutes);
 
 // Error Handler
 app.use(errorHandler);

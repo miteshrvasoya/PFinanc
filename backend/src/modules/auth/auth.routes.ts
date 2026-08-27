@@ -10,6 +10,7 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   name: z.string().min(2),
+  household_name: z.string().min(2).optional(),
 });
 
 const loginSchema = z.object({
@@ -17,6 +18,7 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+router.get('/system-status', AuthController.getSystemStatus);
 router.post('/register', validate({ body: registerSchema }), AuthController.register);
 router.post('/login', validate({ body: loginSchema }), AuthController.login);
 router.get('/me', authenticate, AuthController.me);

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../lib/api';
 import { Sidebar, NavTab } from '../components/layout/Sidebar';
 import { Header } from '../components/layout/Header';
 import { DashboardView } from '../components/dashboard/DashboardView';
@@ -12,15 +13,61 @@ import { CategoriesView } from '../components/categories/CategoriesView';
 import { FamilyView } from '../components/family/FamilyView';
 import { AnalyticsView } from '../components/analytics/AnalyticsView';
 import { LoginView } from '../components/auth/LoginView';
+import { FirstInstallSetup } from '../components/auth/FirstInstallSetup';
+import { OnboardingWizard } from '../components/onboarding/OnboardingWizard';
 import { RefreshCw } from 'lucide-react';
 
 export default function Home() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
+  const [isFirstInstall, setIsFirstInstall] = useState(false);
+  const [checkingSystem, setCheckingSystem] = useState(true);
+
+  // Onboarding state
+  const [onboardingState, setOnboardingState] = useState<any>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const [initialTxAction, setInitialTxAction] = useState<'add_expense' | 'add_income' | null>(null);
   const [initialTransferOpen, setInitialTransferOpen] = useState(false);
 
-  if (isLoading) {
+  useEffect(() => {
+    checkSystem();
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      checkOnboarding();
+    }
+  }, [isAuthenticated]);
+
+  const checkSystem = async () => {
+    try {
+      const res = await api.getSystemStatus();
+      if (res.success && res.data) {
+        setIsFirstInstall(res.data.isFirstInstall);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setCheckingSystem(false);
+    }
+  };
+
+  const checkOnboarding = async () => {
+    try {
+      const res = await api.getOnboardingStatus();
+      if (res.success && res.data) {
+        setOnboardingState(res.data);
+        if (res.data.status === 'IN_PROGRESS') {
+          setShowOnboarding(true);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  if (isLoading || checkingSystem) {
     return (
       <div className="min-h-screen bg-[#090d16] flex items-center justify-center text-slate-400">
         <RefreshCw className="w-8 h-8 animate-spin text-indigo-500 mr-3" />
@@ -29,8 +76,32 @@ export default function Home() {
     );
   }
 
+  // If completely fresh installation with 0 users, show first install welcome
+  if (isFirstInstall && !isAuthenticated) {
+    return (
+      <FirstInstallSetup
+        onCompleted={() => {
+          setIsFirstInstall(false);
+          setShowOnboarding(true);
+        }}
+      />
+    );
+  }
+
   if (!isAuthenticated) {
     return <LoginView />;
+  }
+
+  // If user is currently going through onboarding wizard
+  if (showOnboarding) {
+    return (
+      <OnboardingWizard
+        onFinished={() => {
+          setShowOnboarding(false);
+          setActiveTab('dashboard');
+        }}
+      />
+    );
   }
 
   const handleQuickAction = (action: 'add_expense' | 'add_income' | 'transfer' | 'add_account' | 'import_csv') => {

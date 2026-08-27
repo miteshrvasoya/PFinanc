@@ -1,13 +1,22 @@
 # PFinanc — Self-Hosted Personal & Family Finance & Portfolio Manager
 
-A self-hosted personal and family finance management application engineered for correctness, strict ledger auditability, zero double-counting, and multi-asset portfolio management.
+A self-hosted personal and family finance management application engineered for correctness, strict ledger auditability, zero double-counting, multi-asset portfolio management, and production-ready onboarding.
 
 ---
 
-## Features (Phase 1 & Phase 2)
+## Features (Phase 1, Phase 2, & Phase 2.5)
 
 * **Canonical Financial Ledger**: Deterministic cash balance derivation (`Opening Balance + Confirmed Credits - Confirmed Debits`).
 * **First-Class Transfers**: Inter-account and inter-family transfers are executed atomically and strictly excluded from income/expense metrics to prevent double counting.
+* **Production Onboarding & Clean Initialization (Phase 2.5)**:
+  - **Fresh Installation Detection**: Automated setup wizard on first launch for master administrator registration and household creation.
+  - **Opening Balance Invariant**: Starting balances set initial ledger baseline **without generating artificial income or expense records**.
+  - **Clean Production Seeding**: `npm run seed:system` seeds standard categories only with zero sample users or fake transactions.
+  - **Per-User Resumable Onboarding**: Database-backed multi-step onboarding state machine with skip and resume capabilities.
+  - **Multi-Tier Classification Engine**: Auto-categorization using User Learned Rules -> System Deterministic Rules -> Inter-Account Transfers -> Review.
+  - **Adaptive Rule Learning**: Prompts to save learned classification patterns for future statement imports.
+  - **Physical Gold & Precious Metals**: Direct tracking of Physical Gold, Digital Gold, SGBs, and tangible assets integrated into Net Worth.
+  - **Family Invitations**: Token-based household invitation and onboarding workflow.
 * **Investment Portfolio Manager (Phase 2)**:
   - **Equity & Stocks**: Support for Indian listed stocks (NSE / BSE) with buy/sell/dividend tracking.
   - **Mutual Funds & SIPs**: Accurate `NUMERIC(24,8)` precision for fractional mutual fund units and SIPs.
@@ -19,7 +28,7 @@ A self-hosted personal and family finance management application engineered for 
   - **Fixed Deposits**: Term deposit tracking with compounding interest accrual.
   - **Retirement Accounts**: EPF (Employee & Employer monthly logs), PPF, and NPS corpus management.
 * **Resilient Market Data**: Offline-first daily price storage with automated stale-data preservation on network failures.
-* **Broker Statement Ingestion**: Automated column mapping and deterministic SHA256 duplicate fingerprinting for tradebook CSVs.
+* **Broker & Statement Ingestion**: Automated column mapping and deterministic SHA256 duplicate fingerprinting for bank statements and tradebook CSVs.
 * **Multi-Tenant Household Isolation**: Role-based access control (`OWNER`, `ADMIN`, `MEMBER`, `VIEWER`) and account-level private vs. shared visibility.
 * **Zero 3rd-Party ORMs**: Custom raw SQL Data Access Layer with parameterized queries and transactional atomicity.
 
@@ -31,11 +40,15 @@ A self-hosted personal and family finance management application engineered for 
 PFinanc/
 ├── backend/                  # Node.js + Express + TypeScript + PostgreSQL
 │   ├── src/
-│   │   ├── database/         # Custom QueryHelper, pool, migrations (001, 002, 003), seed scripts
+│   │   ├── database/         # QueryHelper, migrations (001-004), seed:system & seed:dev
 │   │   ├── middleware/       # JWT Auth, RBAC guards, error handlers
 │   │   ├── modules/
-│   │   │   ├── auth/         # JWT Authentication & Registration
+│   │   │   ├── auth/         # JWT Authentication, Registration & System Status
 │   │   │   ├── households/   # Multi-tenancy & family role management
+│   │   │   ├── onboarding/   # Per-user resumable onboarding state machine
+│   │   │   ├── classification/# Multi-tier pattern classifier & learned rules
+│   │   │   ├── physical-assets/# Physical Gold, Digital Gold, SGB & tangible assets
+│   │   │   ├── invitations/  # Family invitation tokens & acceptance
 │   │   │   ├── accounts/     # Bank, cash, and brokerage accounts
 │   │   │   ├── transactions/ # Canonical cash ledger
 │   │   │   ├── transfers/    # Dual-leg inter-account transfers
@@ -51,16 +64,18 @@ PFinanc/
 │   │   │       ├── portfolio/         # Asset allocation & XIRR engine
 │   │   │       └── imports/           # Tradebook statement parser
 │   │   └── app.ts
-│   └── tests/                # Accounting, permissions, CSV, and investment test suites
+│   └── tests/                # Onboarding, accounting, permissions, CSV, and investment test suites
 ├── frontend/                 # Next.js + React + Tailwind CSS SPA (Direct REST client)
 │   ├── src/
 │   │   ├── components/
+│   │   │   ├── auth/         # Login & FirstInstallSetup
+│   │   │   ├── onboarding/   # Guided Onboarding Wizard & Ingestion Review
 │   │   │   ├── dashboard/    # Integrated Net Worth & cash flow
 │   │   │   ├── investments/  # Portfolio, Holdings, Trades, FDs, EPF
 │   │   │   ├── accounts/     # Bank & brokerage accounts
 │   │   │   ├── transactions/ # Cash ledger entries
 │   │   │   ├── transfers/    # Family transfer wizard
-│   │   │   ├── family/       # Member permissions & roles
+│   │   │   ├── family/       # Member permissions, invitations & roles
 │   │   │   └── imports/      # Bank statement CSV uploader
 │   │   ├── context/          # Auth & active household context
 │   │   └── pages/            # Client-rendered SPA views
@@ -69,8 +84,12 @@ PFinanc/
 │   ├── database.md
 │   ├── api.md
 │   ├── accounting-rules.md
-│   ├── permissions.md
-│   └── future-roadmap.md
+│   ├── csv-import.md
+│   └── permissions.md
+├── examples/                 # Sample CSV fixtures for bank statements, tradebooks, and MFs
+│   ├── sample_bank_statement.csv
+│   ├── sample_broker_tradebook.csv
+│   └── sample_mutual_fund_statement.csv
 ├── package.json
 └── README.md
 ```
@@ -84,7 +103,7 @@ PFinanc/
 * **PostgreSQL** v14+ running locally on port 5432
 
 ### 2. Configure Environment
-Verify `backend/.env` (see `.env.example`):
+Verify `backend/.env`:
 ```env
 PORT=5000
 NODE_ENV=development
@@ -98,22 +117,26 @@ JWT_SECRET=super_secure_pfinanc_family_secret_key_2026_jwt
 CORS_ORIGIN=http://localhost:3000
 ```
 
-### 3. Run Migrations & Seed Data
-```bash
-# Run schema migrations (001, 002, 003)
-npm run migrate
+### 3. Initialize Database
 
-# Seed Vasoya Family personas, banking accounts, stocks, MFs, FDs, and EPF
-npm run seed
+#### Clean Production Mode (Zero fake data)
+```bash
+npm run migrate
+npm run seed:system
 ```
 
-### 4. Run Automated Test Suite
+#### Development & Demo Mode
+```bash
+npm run migrate
+npm run seed:dev
+```
+
+### 4. Run Automated Test Suite (All 5 Suites, 23 Tests)
 ```bash
 npm test
 ```
 
 ### 5. Start Development Servers
-In two separate terminals:
 ```bash
 # Terminal 1: Start Express Backend API (port 5000)
 npm run dev:backend
@@ -123,13 +146,3 @@ npm run dev:frontend
 ```
 
 Open **http://localhost:3000** in your browser.
-
----
-
-## Demo Family Personas
-
-| Persona | Email | Password | Role |
-| :--- | :--- | :--- | :--- |
-| **Mitesh Vasoya** | `mitesh@pfinanc.local` | `Password@123` | Household Owner (Stocks Demat, EPF, HDFC Bank) |
-| **Father Vasoya** | `father@pfinanc.local` | `Password@123` | Household Admin (Groww MFs, SBI FD, PPF, SBI Bank) |
-| **Mother Vasoya** | `mother@pfinanc.local` | `Password@123` | Household Member (SBI Savings) |
