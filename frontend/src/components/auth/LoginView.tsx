@@ -18,11 +18,15 @@ export const LoginView: React.FC = () => {
 
     try {
       if (isRegister) {
-        const success = await register(email, password, name);
-        if (!success) setError('Registration failed. Please check your credentials.');
+        const result = await register(email, password, name);
+        if (!result.success) {
+          setError(result.error || 'Registration failed. Please check your credentials.');
+        }
       } else {
-        const success = await login(email, password);
-        if (!success) setError('Invalid email or password.');
+        const result = await login(email, password);
+        if (!result.success) {
+          setError(result.error || 'Invalid email or password.');
+        }
       }
     } catch (err: any) {
       setError(err.message || 'An authentication error occurred');

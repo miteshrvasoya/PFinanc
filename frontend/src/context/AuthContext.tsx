@@ -22,12 +22,13 @@ interface AuthContextType {
   viewMode: 'household' | 'personal';
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
-  register: (email: string, password: string, name: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  register: (email: string, password: string, name: string, householdName?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   switchHousehold: (householdId: string) => void;
   setViewMode: (mode: 'household' | 'personal') => void;
   switchDemoUser: (email: string) => Promise<void>;
+  reloadUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -45,8 +46,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const initAuth = async () => {
     setIsLoading(true);
-    const token = localStorage.getItem('pfinanc_token');
-    if (!token) {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('pfinanc_token') : null;
+    if (!token || token === 'undefined') {
+      if (typeof window !== 'undefined') localStorage.removeItem('pfinanc_token');
       setIsLoading(false);
       return;
     }
@@ -57,64 +59,95 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(res.data.user);
         setHouseholds(res.data.households || []);
         
-        const savedHouseholdId = localStorage.getItem('pfinanc_household_id');
+        const savedHouseholdId = typeof window !== 'undefined' ? localStorage.getItem('pfinanc_household_id') : null;
         const match = res.data.households.find((h: Household) => h.id === savedHouseholdId);
         if (match) {
           setCurrentHousehold(match);
         } else if (res.data.households.length > 0) {
           setCurrentHousehold(res.data.households[0]);
-          localStorage.setItem('pfinanc_household_id', res.data.households[0].id);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('pfinanc_household_id', res.data.households[0].id);
+          }
         }
       } else {
-        logout();
+        // If it's just a network error (e.g. backend down), don't force logout
+        if (res.error?.code === 'NETWORK_ERROR') {
+          console.warn('Backend unreachable, keeping session intact.');
+        } else {
+          console.error('Auth check failed:', res.error);
+          logout();
+        }
       }
-    } catch {
-      logout();
+    } catch (err) {
+      console.error('Failed to init auth:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
-    const res = await api.login(email, password);
-    setIsLoading(false);
-
-    if (res.success && res.data) {
-      localStorage.setItem('pfinanc_token', res.data.token);
-      setUser(res.data.user);
-      setHouseholds(res.data.households || []);
-      
-      const defaultHousehold = res.data.households?.find((h: Household) => h.id === res.data.defaultHouseholdId) || res.data.households?.[0] || null;
-      if (defaultHousehold) {
-        setCurrentHousehold(defaultHousehold);
-        localStorage.setItem('pfinanc_household_id', defaultHousehold.id);
+    try {
+      const res = await api.login(email.trim(), password);
+      if (res.success && res.data) {
+        if (typeof window !== 'undefined' && res.data.token) {
+          localStorage.setItem('pfinanc_token', res.data.token);
+        }
+        setUser(res.data.user);
+        setHouseholds(res.data.households || []);
+        
+        const defaultHousehold = res.data.households?.find((h: Household) => h.id === res.data.defaultHouseholdId) || res.data.households?.[0] || null;
+        if (defaultHousehold) {
+          setCurrentHousehold(defaultHousehold);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('pfinanc_household_id', defaultHousehold.id);
+          }
+        }
+        setIsLoading(false);
+        return { success: true };
       }
-      return true;
+      setIsLoading(false);
+      return { success: false, error: res.error?.message || 'Invalid email or password' };
+    } catch (err: any) {
+      setIsLoading(false);
+      return { success: false, error: err.message || 'Login failed' };
     }
-    return false;
   };
 
-  const register = async (email: string, password: string, name: string): Promise<boolean> => {
+  const register = async (
+    email: string,
+    password: string,
+    name: string,
+    householdName?: string
+  ): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
-    const res = await api.register(email, password, name);
-    setIsLoading(false);
-
-    if (res.success && res.data) {
-      localStorage.setItem('pfinanc_token', res.data.token);
-      setUser(res.data.user);
-      if (res.data.defaultHouseholdId) {
-        localStorage.setItem('pfinanc_household_id', res.data.defaultHouseholdId);
+    try {
+      const res = await api.register(email.trim(), password, name.trim(), householdName?.trim() || undefined);
+      if (res.success && res.data) {
+        if (typeof window !== 'undefined' && res.data.token) {
+          localStorage.setItem('pfinanc_token', res.data.token);
+          if (res.data.defaultHouseholdId) {
+            localStorage.setItem('pfinanc_household_id', res.data.defaultHouseholdId);
+          }
+        }
+        setUser(res.data.user);
+        await initAuth(); // Sync the state immediately
+        setIsLoading(false);
+        return { success: true };
       }
-      await initAuth();
-      return true;
+      setIsLoading(false);
+      return { success: false, error: res.error?.message || 'Registration failed' };
+    } catch (err: any) {
+      setIsLoading(false);
+      return { success: false, error: err.message || 'Registration failed' };
     }
-    return false;
   };
 
   const logout = () => {
-    localStorage.removeItem('pfinanc_token');
-    localStorage.removeItem('pfinanc_household_id');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('pfinanc_token');
+      localStorage.removeItem('pfinanc_household_id');
+    }
     setUser(null);
     setHouseholds([]);
     setCurrentHousehold(null);
@@ -124,12 +157,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const found = households.find((h) => h.id === householdId);
     if (found) {
       setCurrentHousehold(found);
-      localStorage.setItem('pfinanc_household_id', found.id);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('pfinanc_household_id', found.id);
+      }
     }
   };
 
   const switchDemoUser = async (email: string) => {
     await login(email, 'Password@123');
+  };
+
+  const reloadUser = async () => {
+    await initAuth();
   };
 
   return (
@@ -147,6 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         switchHousehold,
         setViewMode,
         switchDemoUser,
+        reloadUser,
       }}
     >
       {children}

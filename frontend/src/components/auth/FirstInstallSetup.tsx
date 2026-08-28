@@ -16,7 +16,7 @@ interface FirstInstallSetupProps {
 }
 
 export const FirstInstallSetup: React.FC<FirstInstallSetupProps> = ({ onCompleted }) => {
-  const { login } = useAuth();
+  const { register } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -44,19 +44,17 @@ export const FirstInstallSetup: React.FC<FirstInstallSetupProps> = ({ onComplete
 
     setLoading(true);
     try {
-      const res = await api.register(
+      const result = await register(
         formData.email,
         formData.password,
         formData.name,
-        formData.householdName || `${formData.name}'s Family`
+        formData.householdName.trim() || undefined
       );
 
-      if (res.success && res.data) {
-        // Log in immediately with returned credentials
-        await login(formData.email, formData.password);
+      if (result.success) {
         onCompleted();
       } else {
-        setError(res.error?.message || 'Failed to initialize system setup');
+        setError(result.error || 'Failed to initialize system setup');
       }
     } catch (err: any) {
       setError(err.message || 'Error initializing first user');

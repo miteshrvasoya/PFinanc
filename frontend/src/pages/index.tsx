@@ -150,7 +150,7 @@ export default function Home() {
               onClearInitialOpen={() => setInitialTransferOpen(false)}
             />
           )}
-          {activeTab === 'imports' && <ImportsView />}
+          {activeTab === 'imports' && <ImportsView onNavigateToTab={setActiveTab} />}
           {activeTab === 'categories' && <CategoriesView />}
           {activeTab === 'family' && <FamilyView />}
           {activeTab === 'analytics' && <AnalyticsView />}

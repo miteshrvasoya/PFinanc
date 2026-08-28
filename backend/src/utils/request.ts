@@ -1,6 +1,9 @@
 import { Request } from 'express';
 
 export function getHouseholdId(req: Request): string {
+  if (req.householdMembership?.household_id) {
+    return req.householdMembership.household_id;
+  }
   const headerVal = req.headers['x-household-id'];
   if (headerVal) {
     return Array.isArray(headerVal) ? headerVal[0] : headerVal;

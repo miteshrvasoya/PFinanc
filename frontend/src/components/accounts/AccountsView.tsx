@@ -56,10 +56,19 @@ export const AccountsView: React.FC = () => {
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await api.createAccount({
-        ...formData,
+      const payload: any = {
+        name: formData.name.trim(),
+        account_type: formData.account_type,
         opening_balance: parseFloat(String(formData.opening_balance)) || 0,
-      });
+        opening_balance_date: formData.opening_balance_date,
+        is_shared: formData.is_shared,
+      };
+
+      if (formData.institution_name.trim()) payload.institution_name = formData.institution_name.trim();
+      if (formData.account_number.trim()) payload.account_number = formData.account_number.trim();
+      if (formData.notes.trim()) payload.notes = formData.notes.trim();
+
+      const res = await api.createAccount(payload);
       if (res.success) {
         setShowAddModal(false);
         setFormData({

@@ -18,5 +18,11 @@ export const config = {
     secret: process.env.JWT_SECRET || 'super_secure_pfinanc_family_secret_key_2026_jwt',
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   },
+  openRouter: {
+    apiKey: process.env.OPENROUTER_API_KEY,
+    model: process.env.OPENROUTER_MODEL,
+    siteUrl: process.env.OPENROUTER_SITE_URL || 'http://localhost:3000',
+    appName: process.env.OPENROUTER_APP_NAME || 'PFinanc',
+  },
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3000',
 };

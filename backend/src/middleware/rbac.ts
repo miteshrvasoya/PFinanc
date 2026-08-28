@@ -26,7 +26,17 @@ export function requireHouseholdAccess(allowedRoles?: Array<'OWNER' | 'ADMIN' | 
         return;
       }
 
-      const householdId = (req.headers['x-household-id'] || req.query.household_id || req.body.household_id || req.params.householdId) as string;
+      let householdId = (req.headers['x-household-id'] || req.query?.household_id || req.body?.household_id || req.params?.householdId) as string;
+
+      if (!householdId) {
+        const defaultMembership = await QueryHelper.queryOne<HouseholdMembership>(
+          `SELECT household_id, role FROM household_members WHERE user_id = $1 AND status = 'ACTIVE' ORDER BY created_at ASC`,
+          [user.id]
+        );
+        if (defaultMembership) {
+          householdId = defaultMembership.household_id;
+        }
+      }
 
       if (!householdId) {
         res.status(400).json({ success: false, error: { code: 'HOUSEHOLD_ID_REQUIRED', message: 'Household context is required' } });

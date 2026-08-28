@@ -532,6 +532,72 @@ class ApiClient {
       body: JSON.stringify({ include_duplicates: includeDuplicates }),
     });
   }
+
+  // Statement Pipeline (Dedicated Parsing & AI Analysis)
+  async uploadStatement(accountId: string, file: File, columnMapping?: any, allowDuplicateFile?: boolean) {
+    const formData = new FormData();
+    formData.append('account_id', accountId);
+    formData.append('file', file);
+    if (columnMapping) {
+      formData.append('column_mapping', JSON.stringify(columnMapping));
+    }
+    if (allowDuplicateFile) {
+      formData.append('allow_duplicate_file', 'true');
+    }
+    return this.request('/statement-imports/upload', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  async getStatementImport(id: string) {
+    return this.request(`/statement-imports/${id}`);
+  }
+
+  async getStatementParsedRows(id: string, page = 1, limit = 100, rowType?: string) {
+    const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (rowType) query.append('row_type', rowType);
+    return this.request(`/statement-imports/${id}/parsed-rows?${query.toString()}`);
+  }
+
+  async startAiAnalysis(
+    id: string,
+    options: { model?: string; chunkSize?: number; forceMock?: boolean; asyncExecution?: boolean } = {}
+  ) {
+    return this.request(`/statement-imports/${id}/ai-run`, {
+      method: 'POST',
+      body: JSON.stringify({
+        model: options.model,
+        chunk_size: options.chunkSize,
+        force_mock: options.forceMock,
+        async_execution: options.asyncExecution,
+      }),
+    });
+  }
+
+  async getStatementReview(id: string) {
+    return this.request(`/statement-imports/${id}/review`);
+  }
+
+  async retryAiChunk(chunkId: string, forceMock?: boolean) {
+    return this.request(`/statement-imports/chunks/${chunkId}/retry`, {
+      method: 'POST',
+      body: JSON.stringify({ force_mock: forceMock }),
+    });
+  }
+
+  async confirmStatementImport(
+    id: string,
+    options: { includeDuplicates?: boolean; rowOverrides?: any } = {}
+  ) {
+    return this.request(`/statement-imports/${id}/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({
+        include_duplicates: options.includeDuplicates ?? false,
+        row_overrides: options.rowOverrides ?? {},
+      }),
+    });
+  }
 }
 
 export const api = new ApiClient();

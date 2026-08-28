@@ -16,6 +16,7 @@ import { onboardingRoutes } from './modules/onboarding/onboarding.routes.js';
 import { classificationRoutes } from './modules/classification/classification.routes.js';
 import { physicalAssetsRoutes } from './modules/physical-assets/physicalAssets.routes.js';
 import { invitationsRoutes } from './modules/invitations/invitations.routes.js';
+import { statementImportsRoutes } from './modules/statement-imports/statementImports.routes.js';
 
 export const app = express();
 
@@ -24,8 +25,8 @@ app.use(cors({
   origin: config.corsOrigin,
   credentials: true,
 }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // Health Check
 app.get('/health', (req, res) => {
@@ -44,6 +45,7 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/transfers', transferRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/imports', importRoutes);
+app.use('/api/statement-imports', statementImportsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/investments', investmentsRouter);

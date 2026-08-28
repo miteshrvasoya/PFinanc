@@ -18,68 +18,101 @@ export class AuthService {
     };
   }
 
-  static async register(data: { email: string; password: string; name: string; household_name?: string }) {
-    const existing = await QueryHelper.queryOne(`SELECT id FROM users WHERE email = $1`, [data.email.toLowerCase()]);
-    if (existing) {
-      const error: any = new Error('User with this email already exists');
-      error.status = 400;
-      error.code = 'EMAIL_ALREADY_EXISTS';
-      throw error;
-    }
+  /**
+   * Register a new user, create their default household, assign OWNER role, and setup onboarding
+   */
+  static async register(data: { email: string; password: string; name: string; household_name?: string | null }) {
+    const cleanEmail = (data.email || '').trim().toLowerCase();
+    const cleanName = (data.name || '').trim();
 
-    // Check if this is the very first user in the system
-    const userCountResult = await QueryHelper.queryOne<{ count: string }>(`SELECT COUNT(*)::text as count FROM users`);
-    const isFirstUser = parseInt(userCountResult?.count || '0', 10) === 0;
+    return QueryHelper.transaction(async (client) => {
+      const existing = await QueryHelper.queryOne(
+        `SELECT id FROM users WHERE email = $1`,
+        [cleanEmail],
+        client
+      );
+      if (existing) {
+        const error: any = new Error('User with this email already exists');
+        error.status = 400;
+        error.code = 'EMAIL_ALREADY_EXISTS';
+        throw error;
+      }
 
-    const passwordHash = await bcrypt.hash(data.password, 10);
-    const user = await QueryHelper.insert('users', {
-      email: data.email.toLowerCase(),
-      password_hash: passwordHash,
-      name: data.name,
-      status: 'ACTIVE',
+      // Check if this is the very first user in the system
+      const userCountResult = await QueryHelper.queryOne<{ count: string }>(
+        `SELECT COUNT(*)::text as count FROM users`,
+        [],
+        client
+      );
+      const isFirstUser = parseInt(userCountResult?.count || '0', 10) === 0;
+
+      const passwordHash = await bcrypt.hash(data.password, 10);
+      const user = await QueryHelper.insert(
+        'users',
+        {
+          email: cleanEmail,
+          password_hash: passwordHash,
+          name: cleanName,
+          status: 'ACTIVE',
+        },
+        client
+      );
+
+      // Create a household for new user
+      const householdName = (data.household_name && data.household_name.trim()) || `${cleanName}'s Family`;
+      const household = await QueryHelper.insert(
+        'households',
+        {
+          name: householdName,
+          default_currency: 'INR',
+          created_by: user.id,
+        },
+        client
+      );
+
+      await QueryHelper.insert(
+        'household_members',
+        {
+          household_id: household.id,
+          user_id: user.id,
+          role: 'OWNER',
+          status: 'ACTIVE',
+        },
+        client
+      );
+
+      // Initialize onboarding progress for this user + household
+      await QueryHelper.insert(
+        'onboarding_progress',
+        {
+          household_id: household.id,
+          user_id: user.id,
+          current_step: 'welcome',
+          status: 'IN_PROGRESS',
+          completed_sections: JSON.stringify([]),
+          metadata: JSON.stringify({ isFirstUser }),
+        },
+        client
+      );
+
+      const token = jwt.sign({ id: user.id, email: user.email }, config.jwt.secret, {
+        expiresIn: (config.jwt.expiresIn || '7d') as any,
+      });
+
+      return {
+        user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url },
+        token,
+        defaultHouseholdId: household.id,
+        isFirstUser,
+      };
     });
-
-    // Create a household for new user
-    const householdName = data.household_name?.trim() || `${data.name}'s Family`;
-    const household = await QueryHelper.insert('households', {
-      name: householdName,
-      default_currency: 'INR',
-      created_by: user.id,
-    });
-
-    await QueryHelper.insert('household_members', {
-      household_id: household.id,
-      user_id: user.id,
-      role: 'OWNER',
-      status: 'ACTIVE',
-    });
-
-    // Initialize onboarding progress for this user + household
-    await QueryHelper.insert('onboarding_progress', {
-      household_id: household.id,
-      user_id: user.id,
-      current_step: 'welcome',
-      status: 'IN_PROGRESS',
-      completed_sections: JSON.stringify([]),
-      metadata: JSON.stringify({ isFirstUser }),
-    });
-
-    const token = jwt.sign({ id: user.id, email: user.email }, config.jwt.secret, {
-      expiresIn: (config.jwt.expiresIn || '7d') as any,
-    });
-
-    return {
-      user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url },
-      token,
-      defaultHouseholdId: household.id,
-      isFirstUser,
-    };
   }
 
   static async login(data: { email: string; password: string }) {
+    const cleanEmail = (data.email || '').trim().toLowerCase();
     const user = await QueryHelper.queryOne(
       `SELECT id, email, password_hash, name, avatar_url, status FROM users WHERE email = $1`,
-      [data.email.toLowerCase()]
+      [cleanEmail]
     );
 
     if (!user) {
