@@ -14,7 +14,7 @@ export interface AiInputRow {
 export interface AiResultRow {
   parsedRowId: string;
   sourceRowNumber: number;
-  transactionType: 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'OTHER';
+  transactionType: 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'INVESTMENT' | 'OTHER';
   direction: 'DEBIT' | 'CREDIT';
   merchant: string;
   suggestedCategory: string;
@@ -65,7 +65,7 @@ Analyze each transaction row and return a JSON object with this EXACT schema:
   "transactions": [
     {
       "sourceRowNumber": number,
-      "transactionType": "INCOME" | "EXPENSE" | "TRANSFER" | "OTHER",
+      "transactionType": "INCOME" | "EXPENSE" | "TRANSFER" | "INVESTMENT" | "OTHER",
       "direction": "DEBIT" | "CREDIT",
       "merchant": string,
       "suggestedCategory": string,
@@ -81,7 +81,8 @@ Rules:
 2. Common Indian merchants (Swiggy, Zomato, Uber, Amazon, Flipkart, Tata Power, D-Mart, Netflix, Zepto, Blinkit) must be extracted accurately.
 3. Salary credits, interest credits, dividends must have transactionType "INCOME".
 4. UPI/NEFT/IMPS transfers to personal names or other bank accounts must have transferCandidate: true.
-5. Return RAW JSON ONLY. Do not wrap in markdown or backticks.`;
+5. Outgoing money to mutual funds, SIPs, term deposits (FD/RD), or brokers (e.g. Zerodha, Groww, Upstox, AMC, Mutual Fund) must have transactionType "INVESTMENT".
+6. Return RAW JSON ONLY. Do not wrap in markdown or backticks.`;
 
       const userContent = JSON.stringify({
         chunkId,
@@ -160,7 +161,7 @@ Rules:
         validatedResults.push({
           parsedRowId: matchingInput.parsedRowId,
           sourceRowNumber: srcNum,
-          transactionType: ['INCOME', 'EXPENSE', 'TRANSFER', 'OTHER'].includes(item.transactionType)
+          transactionType: ['INCOME', 'EXPENSE', 'TRANSFER', 'INVESTMENT', 'OTHER'].includes(item.transactionType)
             ? item.transactionType
             : matchingInput.credit && matchingInput.credit > 0
               ? 'INCOME'
@@ -303,6 +304,9 @@ Rules:
         transferConf = 0.85;
         category = 'Transfer';
         txType = 'TRANSFER';
+      } else if (desc.includes('SIP') || desc.includes('MUTUAL FUND') || desc.includes('ZERODHA') || desc.includes('GROWW') || desc.includes('UPSTOX') || desc.includes('FD') || desc.includes('FIXED DEPOSIT') || desc.includes('AMC')) {
+        category = 'Investment';
+        txType = 'INVESTMENT';
       } else if (desc.includes('INTEREST') || desc.includes('DIVIDEND')) {
         category = 'Investment Income';
         txType = 'INCOME';

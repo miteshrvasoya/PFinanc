@@ -316,7 +316,7 @@ export class StatementImportsService {
     userId: string,
     options: {
       includeDuplicates?: boolean;
-      rowOverrides?: Record<string, { category_id?: string; transaction_type?: string; description?: string; merchant?: string }>;
+      rowOverrides?: Record<string, { category_id?: string; transaction_type?: string; description?: string; merchant?: string; investment_type?: string }>;
     } = {}
   ) {
     const imp = await this.getImport(importId, householdId);
@@ -356,7 +356,15 @@ export class StatementImportsService {
         const finalType = override.transaction_type || item.transactionType || 'EXPENSE';
         const finalDesc = override.description || item.description;
 
-        await QueryHelper.insert(
+        let txDate = new Date().toISOString().split('T')[0];
+        if (item.date) {
+          const parsed = new Date(item.date);
+          if (!isNaN(parsed.getTime())) {
+            txDate = parsed.toISOString().split('T')[0];
+          }
+        }
+
+        const tx = await QueryHelper.insert(
           'transactions',
           {
             household_id: householdId,
@@ -366,7 +374,7 @@ export class StatementImportsService {
             transaction_type: finalType,
             amount: item.amount,
             currency: 'INR',
-            transaction_date: item.date || new Date().toISOString().split('T')[0],
+            transaction_date: txDate,
             description: finalDesc,
             status: 'CONFIRMED',
             source_type: 'CSV_IMPORT',
@@ -375,6 +383,38 @@ export class StatementImportsService {
           },
           client
         );
+
+        if (finalType === 'INVESTMENT') {
+          const invType = override.investment_type || 'MUTUAL_FUND';
+          if (invType === 'FD') {
+            await QueryHelper.insert('fixed_deposits', {
+              household_id: householdId,
+              account_id: imp.account_id,
+              owner_user_id: userId,
+              institution_name: item.merchant || 'Bank (Auto-Created from CSV)',
+              principal_amount: item.amount,
+              interest_rate: 0,
+              start_date: txDate,
+              maturity_date: txDate, // To be updated by user later
+              maturity_amount: item.amount,
+              current_value: item.amount,
+              status: 'ACTIVE'
+            }, client);
+          } else if (invType === 'MUTUAL_FUND' || invType === 'STOCK') {
+            await QueryHelper.insert('investment_transactions', {
+              household_id: householdId,
+              investment_account_id: imp.account_id,
+              transaction_type: 'BUY',
+              transaction_date: txDate,
+              gross_amount: item.amount,
+              net_amount: item.amount,
+              currency: 'INR',
+              linked_cash_transaction_id: tx.id,
+              source: 'CSV_IMPORT',
+              status: 'CONFIRMED'
+            }, client);
+          }
+        }
 
         committedCount++;
       }

@@ -53,7 +53,7 @@ export const StatementPipelineView: React.FC<StatementPipelineViewProps> = ({
   const [reviewResults, setReviewResults] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE' | 'TRANSFER'>('ALL');
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'INVESTMENT'>('ALL');
   const [includeDuplicates, setIncludeDuplicates] = useState(false);
   const [rowOverrides, setRowOverrides] = useState<Record<string, any>>({});
   const [isCommitting, setIsCommitting] = useState(false);
@@ -224,6 +224,18 @@ export const StatementPipelineView: React.FC<StatementPipelineViewProps> = ({
       [parsedRowId]: {
         ...(prev[parsedRowId] || {}),
         transaction_type: type,
+        // Default investment type if switched to INVESTMENT
+        ...(type === 'INVESTMENT' && !prev[parsedRowId]?.investment_type ? { investment_type: 'MUTUAL_FUND' } : {})
+      },
+    }));
+  };
+
+  const handleInvestmentTypeChange = (parsedRowId: string, invType: string) => {
+    setRowOverrides((prev) => ({
+      ...prev,
+      [parsedRowId]: {
+        ...(prev[parsedRowId] || {}),
+        investment_type: invType,
       },
     }));
   };
@@ -676,6 +688,7 @@ export const StatementPipelineView: React.FC<StatementPipelineViewProps> = ({
                     <option value="EXPENSE">Expenses Only</option>
                     <option value="INCOME">Income Only</option>
                     <option value="TRANSFER">Transfers Only</option>
+                    <option value="INVESTMENT">Investments Only</option>
                   </select>
 
                   {/* Include Duplicates Checkbox */}
@@ -750,15 +763,30 @@ export const StatementPipelineView: React.FC<StatementPipelineViewProps> = ({
                               )}
                             </td>
                             <td className="py-1.5 px-3">
-                              <select
-                                value={currentType}
-                                onChange={(e) => handleTypeChange(item.parsedRowId, e.target.value)}
-                                className="px-1.5 py-1 bg-slate-800 border border-slate-700 rounded text-slate-200 text-[11px] focus:outline-none focus:border-indigo-500"
-                              >
-                                <option value="EXPENSE">Expense</option>
-                                <option value="INCOME">Income</option>
-                                <option value="TRANSFER">Transfer</option>
-                              </select>
+                              <div className="flex flex-col gap-1">
+                                <select
+                                  value={currentType}
+                                  onChange={(e) => handleTypeChange(item.parsedRowId, e.target.value)}
+                                  className="px-1.5 py-1 bg-slate-800 border border-slate-700 rounded text-slate-200 text-[11px] focus:outline-none focus:border-indigo-500"
+                                >
+                                  <option value="EXPENSE">Expense</option>
+                                  <option value="INCOME">Income</option>
+                                  <option value="TRANSFER">Transfer</option>
+                                  <option value="INVESTMENT">Investment</option>
+                                </select>
+                                
+                                {currentType === 'INVESTMENT' && (
+                                  <select
+                                    value={rowOverrides[item.parsedRowId]?.investment_type || 'MUTUAL_FUND'}
+                                    onChange={(e) => handleInvestmentTypeChange(item.parsedRowId, e.target.value)}
+                                    className="px-1.5 py-1 bg-indigo-900/30 border border-indigo-500/30 rounded text-indigo-300 text-[10px] focus:outline-none focus:border-indigo-500"
+                                  >
+                                    <option value="MUTUAL_FUND">Mutual Fund</option>
+                                    <option value="STOCK">Stock / Equity</option>
+                                    <option value="FD">Fixed Deposit</option>
+                                  </select>
+                                )}
+                              </div>
                             </td>
                             <td className="py-1.5 px-3 text-slate-300 font-medium">
                               {item.merchant}
