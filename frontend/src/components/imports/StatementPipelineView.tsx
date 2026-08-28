@@ -283,7 +283,7 @@ export const StatementPipelineView: React.FC<StatementPipelineViewProps> = ({
   });
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-4">
       {/* Header Pipeline Tracker */}
       <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-6 gap-4">
         <div className="flex items-center space-x-3">
@@ -712,17 +712,17 @@ export const StatementPipelineView: React.FC<StatementPipelineViewProps> = ({
 
               {/* Transactions Review Table */}
               <div className="border border-slate-800 rounded-xl overflow-hidden">
-                <div className="overflow-x-auto max-h-[480px]">
+                <div className="overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-800/90 text-slate-400 uppercase tracking-wider sticky top-0 backdrop-blur z-10 border-b border-slate-700">
                       <tr>
-                        <th className="py-3 px-4">#</th>
-                        <th className="py-3 px-4">Date</th>
-                        <th className="py-3 px-4">Description</th>
-                        <th className="py-3 px-4">Type</th>
-                        <th className="py-3 px-4">AI Merchant</th>
-                        <th className="py-3 px-4">Assigned Category</th>
-                        <th className="py-3 px-4 text-right">Amount</th>
+                        <th className="py-2 px-3">#</th>
+                        <th className="py-2 px-3">Date</th>
+                        <th className="py-2 px-3">Description</th>
+                        <th className="py-2 px-3">Type</th>
+                        <th className="py-2 px-3">AI Merchant</th>
+                        <th className="py-2 px-3">Assigned Category</th>
+                        <th className="py-2 px-3 text-right">Amount</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60 bg-slate-900/60">
@@ -738,9 +738,9 @@ export const StatementPipelineView: React.FC<StatementPipelineViewProps> = ({
                               item.isDuplicate ? 'bg-amber-500/5' : ''
                             }`}
                           >
-                            <td className="py-3 px-4 text-slate-500 font-mono">{idx + 1}</td>
-                            <td className="py-3 px-4 text-slate-300 whitespace-nowrap">{item.date}</td>
-                            <td className="py-3 px-4 max-w-xs truncate">
+                            <td className="py-1.5 px-3 text-slate-500 font-mono">{idx + 1}</td>
+                            <td className="py-1.5 px-3 text-slate-300 whitespace-nowrap">{item.date}</td>
+                            <td className="py-1.5 px-3 max-w-xs truncate">
                               <div className="font-medium text-white">{item.description}</div>
                               {item.isDuplicate && (
                                 <div className="text-[10px] text-amber-400 flex items-center gap-1 mt-0.5">
@@ -749,18 +749,18 @@ export const StatementPipelineView: React.FC<StatementPipelineViewProps> = ({
                                 </div>
                               )}
                             </td>
-                            <td className="py-3 px-4">
+                            <td className="py-1.5 px-3">
                               <select
                                 value={currentType}
                                 onChange={(e) => handleTypeChange(item.parsedRowId, e.target.value)}
-                                className="px-2 py-1 bg-slate-800 border border-slate-700 rounded text-slate-200 text-xs focus:outline-none focus:border-indigo-500"
+                                className="px-1.5 py-1 bg-slate-800 border border-slate-700 rounded text-slate-200 text-[11px] focus:outline-none focus:border-indigo-500"
                               >
                                 <option value="EXPENSE">Expense</option>
                                 <option value="INCOME">Income</option>
                                 <option value="TRANSFER">Transfer</option>
                               </select>
                             </td>
-                            <td className="py-3 px-4 text-slate-300 font-medium">
+                            <td className="py-1.5 px-3 text-slate-300 font-medium">
                               {item.merchant}
                               {item.transferCandidate && (
                                 <span className="ml-2 px-1.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded text-[10px]">
@@ -768,11 +768,11 @@ export const StatementPipelineView: React.FC<StatementPipelineViewProps> = ({
                                 </span>
                               )}
                             </td>
-                            <td className="py-3 px-4">
+                            <td className="py-1.5 px-3">
                               <select
                                 value={currentCategoryId}
                                 onChange={(e) => handleCategoryChange(item.parsedRowId, e.target.value)}
-                                className="px-2 py-1 bg-slate-800 border border-slate-700 rounded text-slate-200 text-xs focus:outline-none focus:border-indigo-500 min-w-[140px]"
+                                className="px-1.5 py-1 bg-slate-800 border border-slate-700 rounded text-slate-200 text-[11px] focus:outline-none focus:border-indigo-500 min-w-[120px]"
                               >
                                 <option value="">Select Category...</option>
                                 {categories.map((c) => (
@@ -782,7 +782,7 @@ export const StatementPipelineView: React.FC<StatementPipelineViewProps> = ({
                                 ))}
                               </select>
                             </td>
-                            <td className="py-3 px-4 text-right whitespace-nowrap">
+                            <td className="py-1.5 px-3 text-right whitespace-nowrap">
                               <span
                                 className={`font-semibold flex items-center justify-end gap-1 ${
                                   isIncome ? 'text-emerald-400' : 'text-slate-200'
