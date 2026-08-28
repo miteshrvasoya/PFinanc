@@ -187,15 +187,39 @@ export class StatementCsvParser {
   }
 
   /**
+   * Automatically strips preambles by finding the first likely header row
+   */
+  private static stripPreamble(content: string): string {
+    const lines = content.split(/\r?\n/);
+    
+    let headerIndex = 0;
+    for (let i = 0; i < Math.min(50, lines.length); i++) {
+      const lower = lines[i].toLowerCase();
+      // A typical statement header will have date and something else
+      if (
+        (lower.includes('date') || lower.includes('txn') || lower.includes('time')) &&
+        (lower.includes('amount') || lower.includes('balance') || lower.includes('particulars') || lower.includes('desc') || lower.includes('narration') || lower.includes('dr') || lower.includes('cr'))
+      ) {
+        headerIndex = i;
+        break;
+      }
+    }
+    
+    return lines.slice(headerIndex).join('\n');
+  }
+
+  /**
    * Parse CSV content deterministically and normalize every row
    */
   static parse(csvContent: string, customMapping?: Partial<ColumnMapping>): ParseResult {
     const fileHash = this.computeFileHash(csvContent);
     const fileSizeBytes = Buffer.byteLength(csvContent, 'utf8');
 
+    const strippedContent = this.stripPreamble(csvContent);
+
     let rawRecords: Record<string, string>[] = [];
     try {
-      rawRecords = parse(csvContent, {
+      rawRecords = parse(strippedContent, {
         columns: true,
         skip_empty_lines: true,
         trim: true,
