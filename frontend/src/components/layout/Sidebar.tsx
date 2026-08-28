@@ -12,33 +12,21 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
-export type NavTab =
-  | 'dashboard'
-  | 'accounts'
-  | 'investments'
-  | 'transactions'
-  | 'transfers'
-  | 'imports'
-  | 'categories'
-  | 'family'
-  | 'analytics';
+import Link from 'next/link';
+import { useRouter } from 'next/router';
 
-interface SidebarProps {
-  activeTab: NavTab;
-  onTabChange: (tab: NavTab) => void;
-}
-
-export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
-  const navItems: { id: NavTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
-    { id: 'accounts', label: 'Accounts', icon: <Wallet className="w-5 h-5" /> },
-    { id: 'investments', label: 'Investments & Portfolio', icon: <TrendingUp className="w-5 h-5" /> },
-    { id: 'transactions', label: 'Transactions', icon: <Receipt className="w-5 h-5" /> },
-    { id: 'transfers', label: 'Transfers', icon: <ArrowLeftRight className="w-5 h-5" /> },
-    { id: 'imports', label: 'CSV Imports', icon: <FileSpreadsheet className="w-5 h-5" /> },
-    { id: 'categories', label: 'Categories', icon: <FolderTree className="w-5 h-5" /> },
-    { id: 'family', label: 'Family & Roles', icon: <Users className="w-5 h-5" /> },
-    { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="w-5 h-5" /> },
+export const Sidebar: React.FC = () => {
+  const router = useRouter();
+  const navItems: { id: string; href: string; label: string; icon: React.ReactNode }[] = [
+    { id: 'dashboard', href: '/', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
+    { id: 'accounts', href: '/accounts', label: 'Accounts', icon: <Wallet className="w-5 h-5" /> },
+    { id: 'investments', href: '/investments', label: 'Investments & Portfolio', icon: <TrendingUp className="w-5 h-5" /> },
+    { id: 'transactions', href: '/transactions', label: 'Transactions', icon: <Receipt className="w-5 h-5" /> },
+    { id: 'transfers', href: '/transfers', label: 'Transfers', icon: <ArrowLeftRight className="w-5 h-5" /> },
+    { id: 'imports', href: '/imports', label: 'CSV Imports', icon: <FileSpreadsheet className="w-5 h-5" /> },
+    { id: 'categories', href: '/categories', label: 'Categories', icon: <FolderTree className="w-5 h-5" /> },
+    { id: 'family', href: '/family', label: 'Family & Roles', icon: <Users className="w-5 h-5" /> },
+    { id: 'analytics', href: '/analytics', label: 'Analytics', icon: <BarChart3 className="w-5 h-5" /> },
   ];
 
   return (
@@ -58,11 +46,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
         {/* Navigation Links */}
         <nav className="p-3 space-y-1">
           {navItems.map((item) => {
-            const isActive = activeTab === item.id;
+            const isActive = router.pathname === item.href;
             return (
-              <button
+              <Link
                 key={item.id}
-                onClick={() => onTabChange(item.id)}
+                href={item.href}
                 className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
                   isActive
                     ? 'bg-indigo-600/15 text-indigo-400 border border-indigo-500/30 shadow-sm shadow-indigo-500/10'
@@ -71,7 +59,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
               >
                 <span className={isActive ? 'text-indigo-400' : 'text-slate-400'}>{item.icon}</span>
                 <span>{item.label}</span>
-              </button>
+              </Link>
             );
           })}
         </nav>
