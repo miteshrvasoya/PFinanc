@@ -17,7 +17,14 @@ export function generateTransactionFingerprint(params: {
   description: string;
   reference?: string | null;
 }): string {
-  const normalizedDate = new Date(params.transactionDate).toISOString().split('T')[0];
+  let normalizedDate = params.transactionDate;
+  try {
+    const parsedDate = new Date(params.transactionDate);
+    if (!isNaN(parsedDate.getTime())) {
+      normalizedDate = parsedDate.toISOString().split('T')[0];
+    }
+  } catch (e) {}
+
   const normalizedAmount = parseFloat(String(params.amount)).toFixed(2);
   const normalizedDesc = params.description.trim().toLowerCase().replace(/\s+/g, ' ');
   const normalizedRef = (params.reference || '').trim().toLowerCase();
@@ -39,7 +46,14 @@ export function generateInvestmentFingerprint(params: {
   netAmount: number | string;
   reference?: string | null;
 }): string {
-  const normalizedDate = new Date(params.transactionDate).toISOString().split('T')[0];
+  let normalizedDate = params.transactionDate;
+  try {
+    const parsedDate = new Date(params.transactionDate);
+    if (!isNaN(parsedDate.getTime())) {
+      normalizedDate = parsedDate.toISOString().split('T')[0];
+    }
+  } catch (e) {}
+
   const normalizedSymbol = params.symbol.trim().toUpperCase();
   const normalizedType = params.transactionType.trim().toUpperCase();
   const normalizedQty = params.quantity ? parseFloat(String(params.quantity)).toFixed(8) : '0';

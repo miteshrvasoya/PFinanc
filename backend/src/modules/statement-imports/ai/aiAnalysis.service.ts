@@ -12,7 +12,7 @@ export interface CreateRunOptions {
 }
 
 export class AiAnalysisService {
-  static readonly DEFAULT_CHUNK_SIZE = 250;
+  static readonly DEFAULT_CHUNK_SIZE = 25;
 
   /**
    * Initialize and start a new AI Analysis Run for a parsed statement

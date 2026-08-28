@@ -118,6 +118,8 @@ Rules:
         }),
       });
 
+      console.log("OpenRouter Response: ", response);
+
       if (!response.ok) {
         const errorText = await response.text();
         console.warn(`OpenRouter API returned HTTP ${response.status}: ${errorText}. Falling back to deterministic classifier.`);
@@ -171,6 +173,14 @@ Rules:
           transferConfidence: typeof item.transferConfidence === 'number' ? item.transferConfidence : 0.0,
           aiNotes: item.aiNotes || `Classified via ${model}`,
         });
+
+        rowMap.delete(srcNum);
+      }
+
+      if (rowMap.size > 0) {
+        const missingRows = Array.from(rowMap.values());
+        const missingResults = this.analyzeDeterministicFallback(chunkId, missingRows, model, promptVersion).results;
+        validatedResults.push(...missingResults);
       }
 
       // If results count matches rows, return success
@@ -201,14 +211,14 @@ Rules:
     // 1. Try direct parse
     try {
       return JSON.parse(clean);
-    } catch {}
+    } catch { }
 
     // 2. Try stripping markdown code fences ```json ... ```
     const fenceMatch = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
     if (fenceMatch && fenceMatch[1]) {
       try {
         return JSON.parse(fenceMatch[1].trim());
-      } catch {}
+      } catch { }
     }
 
     // 3. Try finding substring from first { to last }
@@ -217,7 +227,7 @@ Rules:
     if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
       try {
         return JSON.parse(clean.slice(firstBrace, lastBrace + 1));
-      } catch {}
+      } catch { }
     }
 
     // 4. Try finding substring from first [ to last ]
@@ -226,8 +236,24 @@ Rules:
     if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
       try {
         return JSON.parse(clean.slice(firstBracket, lastBracket + 1));
-      } catch {}
+      } catch { }
     }
+
+    // 5. Try extracting all valid JSON objects from an incomplete array (Salvage Truncated JSON)
+    try {
+      const match = clean.match(/\{[^{}]*\}/g);
+      if (match) {
+        const objects = [];
+        for (const m of match) {
+          try {
+            objects.push(JSON.parse(m));
+          } catch { }
+        }
+        if (objects.length > 0) {
+          return { transactions: objects };
+        }
+      }
+    } catch { }
 
     return null;
   }
