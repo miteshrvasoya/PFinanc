@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import { runMigrations } from './database/migrate.js';
+import { runSystemSeed } from './database/seed-system.js';
 import { config } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
@@ -59,7 +61,19 @@ app.use(errorHandler);
 
 if (process.env.NODE_ENV !== 'test') {
   const PORT = config.port || 5000;
-  app.listen(PORT, () => {
-    console.log(`PFinanc Backend API server listening on http://localhost:${PORT}`);
-  });
+
+  (async () => {
+    try {
+      console.log('Initializing database on startup...');
+      await runMigrations();
+      await runSystemSeed();
+
+      app.listen(PORT, () => {
+        console.log(`PFinanc Backend API server listening on http://localhost:${PORT}`);
+      });
+    } catch (err) {
+      console.error('Failed to initialize database on startup:', err);
+      process.exit(1);
+    }
+  })();
 }

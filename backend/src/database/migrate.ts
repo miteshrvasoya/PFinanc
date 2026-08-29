@@ -44,7 +44,15 @@ export async function runMigrations() {
     const client = await migrationPool.connect();
     console.log('Running schema migrations...');
 
-    const migrationsDir = path.resolve(__dirname, 'migrations');
+    let migrationsDir = path.resolve(__dirname, 'migrations');
+    if (!fs.existsSync(migrationsDir)) {
+      migrationsDir = path.resolve(__dirname, '../../src/database/migrations');
+    }
+
+    if (!fs.existsSync(migrationsDir)) {
+      throw new Error(`Migrations directory not found at ${migrationsDir}`);
+    }
+
     const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
 
     for (const file of files) {
