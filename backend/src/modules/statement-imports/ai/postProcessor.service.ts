@@ -78,7 +78,18 @@ export class StatementPostProcessor {
 
     for (const r of rows) {
       const amountVal = Number(r.amount) || 0;
-      const dateVal = r.transaction_date ? String(r.transaction_date).split('T')[0] : null;
+      let dateVal = null;
+      if (r.transaction_date) {
+        if (r.transaction_date instanceof Date) {
+          const y = r.transaction_date.getFullYear();
+          const m = String(r.transaction_date.getMonth() + 1).padStart(2, '0');
+          const d = String(r.transaction_date.getDate()).padStart(2, '0');
+          dateVal = `${y}-${m}-${d}`;
+        } else {
+          // If it's already a string like "2024-08-09T00:00:00Z"
+          dateVal = String(r.transaction_date).split('T')[0].split(' ')[0];
+        }
+      }
 
       // Fingerprint check
       let isDuplicate = false;

@@ -356,12 +356,15 @@ export class StatementImportsService {
         const finalType = override.transaction_type || item.transactionType || 'EXPENSE';
         const finalDesc = override.description || item.description;
 
-        let txDate = new Date().toISOString().split('T')[0];
-        if (item.date) {
-          const parsed = new Date(item.date);
-          if (!isNaN(parsed.getTime())) {
-            txDate = parsed.toISOString().split('T')[0];
-          }
+        // Use the date exactly as parsed from the statement to avoid UTC timezone shifts
+        // (postProcessor guarantees this is in YYYY-MM-DD format locally)
+        let txDate = item.date;
+        if (!txDate) {
+          const now = new Date();
+          const y = now.getFullYear();
+          const m = String(now.getMonth() + 1).padStart(2, '0');
+          const d = String(now.getDate()).padStart(2, '0');
+          txDate = `${y}-${m}-${d}`;
         }
 
         const tx = await QueryHelper.insert(
