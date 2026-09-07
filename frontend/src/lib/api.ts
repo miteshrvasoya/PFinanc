@@ -515,19 +515,38 @@ class ApiClient {
   }
 
   // Investment Imports
-  async previewInvestmentImport(accountId: string, filename: string, csvContent: string) {
-    return this.request('/investments/imports/preview', {
+  async createInvestmentImport(
+    accountId: string,
+    investmentType: 'STOCK' | 'MUTUAL_FUND',
+    importMode: 'TRANSACTIONS' | 'HOLDINGS',
+    filename: string,
+    csvContent: string
+  ) {
+    return this.request('/investments/imports', {
       method: 'POST',
       body: JSON.stringify({
         investment_account_id: accountId,
+        investment_type: investmentType,
+        import_mode: importMode,
         filename,
         csv_content: csvContent,
       }),
     });
   }
 
-  async commitInvestmentImport(batchId: string, includeDuplicates = false) {
-    return this.request(`/investments/imports/${batchId}/commit`, {
+  async parseInvestmentImport(importId: string, mapping: any) {
+    return this.request(`/investments/imports/${importId}/parse`, {
+      method: 'POST',
+      body: JSON.stringify({ mapping }),
+    });
+  }
+
+  async getInvestmentImportPreview(importId: string) {
+    return this.request(`/investments/imports/${importId}/preview`);
+  }
+
+  async commitInvestmentImport(importId: string, includeDuplicates = false) {
+    return this.request(`/investments/imports/${importId}/commit`, {
       method: 'POST',
       body: JSON.stringify({ include_duplicates: includeDuplicates }),
     });

@@ -167,8 +167,19 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({
                               >
                                 {h.security_type}
                               </span>
+                              {h.snapshot_reconciliation && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/30" title="Snapshot Only">
+                                  SNAP
+                                </span>
+                              )}
                             </div>
                             <p className="text-[11px] text-slate-400 truncate max-w-[200px]">{h.name}</p>
+                            {h.snapshot && h.snapshot.current_quantity !== h.current_quantity && (
+                               <p className="text-[10px] text-amber-400 flex items-center gap-1 mt-1">
+                                 <AlertTriangle className="w-3 h-3" />
+                                 Mismatch: Ledger ({h.current_quantity}) vs Snapshot ({h.snapshot.current_quantity})
+                               </p>
+                            )}
                           </div>
                         </div>
                       </td>

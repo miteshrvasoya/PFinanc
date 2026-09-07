@@ -47,5 +47,7 @@ investmentsRouter.get('/retirement/:id/contributions', RetirementController.getC
 investmentsRouter.post('/retirement/contributions', RetirementController.addContribution);
 
 // 7. Statement Imports
-investmentsRouter.post('/imports/preview', InvestmentImportsController.preview);
+investmentsRouter.post('/imports', InvestmentImportsController.upload);
+investmentsRouter.post('/imports/:id/parse', InvestmentImportsController.parse);
+investmentsRouter.get('/imports/:id/preview', InvestmentImportsController.preview);
 investmentsRouter.post('/imports/:id/commit', InvestmentImportsController.commit);

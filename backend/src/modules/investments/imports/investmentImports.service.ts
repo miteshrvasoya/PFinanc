@@ -2,319 +2,360 @@ import { QueryHelper } from '../../../database/queryHelper.js';
 import { generateHash } from '../../../utils/hash.js';
 import { SecuritiesService } from '../securities/securities.service.js';
 import { logAudit } from '../../../utils/audit.js';
+import { GenericCsvParser, ColumnMapping } from './parsers/GenericCsvParser.js';
 
 export class InvestmentImportsService {
   /**
-   * Parse CSV content into structured rows
+   * Step 1: Upload and create staging import
    */
-  static parseCsv(csvText: string): { headers: string[]; rows: Record<string, string>[] } {
-    const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
-    if (lines.length === 0) return { headers: [], rows: [] };
-
-    const parseLine = (line: string): string[] => {
-      const result: string[] = [];
-      let current = '';
-      let inQuotes = false;
-
-      for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"' || char === "'") {
-          inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-          result.push(current.trim().replace(/^["']|["']$/g, ''));
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-      result.push(current.trim().replace(/^["']|["']$/g, ''));
-      return result;
-    };
-
-    const headers = parseLine(lines[0]).map((h) => h.toLowerCase().replace(/[^a-z0-9_]/g, '_'));
-    const rows: Record<string, string>[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const values = parseLine(lines[i]);
-      if (values.length >= headers.length) {
-        const row: Record<string, string> = {};
-        headers.forEach((h, idx) => {
-          row[h] = values[idx] || '';
-        });
-        rows.push(row);
-      }
-    }
-
-    return { headers, rows };
-  }
-
-  /**
-   * Preview broker CSV statement with security matching & duplicate detection
-   */
-  static async preview(
-    investmentAccountId: string,
+  static async createImport(
     householdId: string,
     userId: string,
+    investmentAccountId: string,
+    investmentType: 'STOCK' | 'MUTUAL_FUND',
+    importMode: 'TRANSACTIONS' | 'HOLDINGS',
     filename: string,
     csvContent: string
   ) {
-    const { headers, rows } = this.parseCsv(csvContent);
-    if (rows.length === 0) {
-      const error: any = new Error('The uploaded CSV file is empty or could not be parsed');
+    const fileHash = generateHash(csvContent);
+
+    // Check for duplicate file
+    const existing = await QueryHelper.queryOne<{ id: string }>(
+      `SELECT id FROM investment_imports WHERE file_hash = $1 AND investment_account_id = $2`,
+      [fileHash, investmentAccountId]
+    );
+
+    if (existing) {
+      const error: any = new Error('This file has already been imported for this account.');
+      error.status = 400;
+      error.code = 'DUPLICATE_FILE';
+      throw error;
+    }
+
+    const rawRecords = GenericCsvParser.parseRaw(csvContent);
+    if (!rawRecords || rawRecords.length === 0) {
+      const error: any = new Error('The uploaded CSV file is empty or could not be parsed.');
       error.status = 400;
       error.code = 'EMPTY_CSV';
       throw error;
     }
 
-    // Auto-detect columns
-    const findCol = (...candidates: string[]) =>
-      headers.find((h) => candidates.some((c) => h.includes(c))) || null;
+    const headers = Object.keys(rawRecords[0] || {});
+    const detectedMapping = GenericCsvParser.detectColumns(headers);
 
-    const dateCol = findCol('date', 'trade_date', 'trans_date', 'time');
-    const symbolCol = findCol('symbol', 'stock', 'scrip', 'instrument', 'security', 'scheme');
-    const isinCol = findCol('isin');
-    const typeCol = findCol('type', 'action', 'buy_sell', 'trade_type', 'transaction');
-    const qtyCol = findCol('qty', 'quantity', 'shares', 'units');
-    const priceCol = findCol('price', 'rate', 'nav', 'cost_per_share');
-    const amountCol = findCol('amount', 'gross', 'value', 'total', 'net');
-    const feeCol = findCol('fee', 'charges', 'brokerage');
-    const taxCol = findCol('tax', 'stt', 'gst');
-    const refCol = findCol('ref', 'order_id', 'trade_id', 'id');
-
-    let validRows = 0;
-    let duplicateRows = 0;
-    let invalidRows = 0;
-
-    const seenFingerprints = new Set<string>();
-    const parsedRows: any[] = [];
-
-    // Pre-fetch all known securities
-    const allSecurities = await QueryHelper.query<any>(`SELECT id, symbol, isin, name, security_type FROM securities`);
-    const isinMap = new Map<string, any>();
-    const symbolMap = new Map<string, any>();
-
-    allSecurities.forEach((s) => {
-      if (s.isin) isinMap.set(s.isin.toUpperCase(), s);
-      symbolMap.set(s.symbol.toUpperCase(), s);
-    });
-
-    for (let i = 0; i < rows.length; i++) {
-      const raw = rows[i];
-      const rawDate = dateCol ? raw[dateCol] : '';
-      const rawSymbol = symbolCol ? raw[symbolCol] : '';
-      const rawIsin = isinCol ? raw[isinCol] : '';
-      const rawType = typeCol ? raw[typeCol] : 'BUY';
-      const rawQty = qtyCol ? parseFloat(raw[qtyCol].replace(/[^0-9.-]/g, '')) : 0;
-      const rawPrice = priceCol ? parseFloat(raw[priceCol].replace(/[^0-9.-]/g, '')) : 0;
-      const rawAmount = amountCol ? parseFloat(raw[amountCol].replace(/[^0-9.-]/g, '')) : rawQty * rawPrice;
-      const rawFees = feeCol ? parseFloat(raw[feeCol].replace(/[^0-9.-]/g, '') || '0') : 0;
-      const rawTaxes = taxCol ? parseFloat(raw[taxCol].replace(/[^0-9.-]/g, '') || '0') : 0;
-      const ref = refCol ? raw[refCol] : '';
-
-      // Normalize date (YYYY-MM-DD)
-      let parsedDate = rawDate;
-      try {
-        const d = new Date(rawDate);
-        if (!isNaN(d.getTime())) {
-          parsedDate = d.toISOString().split('T')[0];
-        }
-      } catch (e) {}
-
-      // Normalize type
-      let txType = 'BUY';
-      const upperType = rawType.toUpperCase();
-      if (upperType.includes('SELL') || upperType.includes('REDEMP')) txType = 'SELL';
-      else if (upperType.includes('SIP')) txType = 'SIP';
-      else if (upperType.includes('DIV')) txType = 'DIVIDEND';
-      else if (upperType.includes('BONUS')) txType = 'BONUS';
-      else if (upperType.includes('SPLIT')) txType = 'SPLIT';
-
-      // Security Matching
-      let matchedSecurity = null;
-      if (rawIsin && isinMap.has(rawIsin.toUpperCase())) {
-        matchedSecurity = isinMap.get(rawIsin.toUpperCase());
-      } else if (rawSymbol && symbolMap.has(rawSymbol.toUpperCase())) {
-        matchedSecurity = symbolMap.get(rawSymbol.toUpperCase());
-      }
-
-      if (!rawDate || !rawSymbol || isNaN(rawAmount) || rawAmount <= 0) {
-        invalidRows++;
-        parsedRows.push({
-          row_index: i + 1,
-          raw_data: raw,
-          parsed_data: { date: parsedDate, symbol: rawSymbol, isin: rawIsin, type: txType, quantity: rawQty, price: rawPrice, amount: rawAmount, reference: ref },
-          matched_security_id: matchedSecurity?.id || null,
-          status: 'INVALID',
-          duplicate_reason: 'Missing date, symbol, or positive amount',
-        });
-        continue;
-      }
-
-      // Deterministic Fingerprint
-      const fingerprintPayload = `${investmentAccountId}|${rawSymbol.toUpperCase()}|${parsedDate}|${txType}|${rawQty}|${rawPrice}|${rawAmount}|${ref}`;
-      const hash = generateHash(fingerprintPayload);
-
-      // Check intra-batch duplicate
-      if (seenFingerprints.has(hash)) {
-        duplicateRows++;
-        parsedRows.push({
-          row_index: i + 1,
-          raw_data: raw,
-          parsed_data: { date: parsedDate, symbol: rawSymbol, isin: rawIsin, type: txType, quantity: rawQty, price: rawPrice, amount: rawAmount, fees: rawFees, taxes: rawTaxes, reference: ref, import_hash: hash },
-          matched_security_id: matchedSecurity?.id || null,
-          status: 'DUPLICATE',
-          duplicate_reason: 'Duplicate within uploaded statement file',
-        });
-        continue;
-      }
-      seenFingerprints.add(hash);
-
-      // Check database existing duplicate
-      const existingInDb = await QueryHelper.queryOne<{ id: string }>(
-        `SELECT id FROM investment_transactions WHERE import_hash = $1`,
-        [hash]
-      );
-
-      if (existingInDb) {
-        duplicateRows++;
-        parsedRows.push({
-          row_index: i + 1,
-          raw_data: raw,
-          parsed_data: { date: parsedDate, symbol: rawSymbol, isin: rawIsin, type: txType, quantity: rawQty, price: rawPrice, amount: rawAmount, fees: rawFees, taxes: rawTaxes, reference: ref, import_hash: hash },
-          matched_security_id: matchedSecurity?.id || null,
-          matched_investment_transaction_id: existingInDb.id,
-          status: 'DUPLICATE',
-          duplicate_reason: 'Transaction already recorded in ledger with identical parameters',
-        });
-      } else {
-        validRows++;
-        parsedRows.push({
-          row_index: i + 1,
-          raw_data: raw,
-          parsed_data: { date: parsedDate, symbol: rawSymbol, isin: rawIsin, type: txType, quantity: rawQty, price: rawPrice, amount: rawAmount, fees: rawFees, taxes: rawTaxes, reference: ref, import_hash: hash },
-          matched_security_id: matchedSecurity?.id || null,
-          status: 'VALID',
-        });
-      }
-    }
-
-    // Save batch record and preview rows
     return QueryHelper.transaction(async (client) => {
-      const batch = await QueryHelper.insert('investment_import_batches', {
-        household_id: householdId,
-        investment_account_id: investmentAccountId,
+      const importRec = await QueryHelper.insert('investment_imports', {
+        family_id: householdId,
         user_id: userId,
-        filename,
-        total_rows: rows.length,
-        valid_rows: validRows,
-        duplicate_rows: duplicateRows,
-        invalid_rows: invalidRows,
-        status: 'PREVIEW',
+        investment_account_id: investmentAccountId,
+        investment_type: investmentType,
+        import_mode: importMode,
+        file_name: filename,
+        file_hash: fileHash,
+        status: 'UPLOADED',
+        total_source_rows: rawRecords.length,
       }, client);
 
-      for (const pr of parsedRows) {
-        await QueryHelper.insert('investment_import_rows', {
-          batch_id: batch.id,
-          row_index: pr.row_index,
-          raw_data: pr.raw_data,
-          parsed_data: pr.parsed_data,
-          matched_security_id: pr.matched_security_id,
-          status: pr.status,
-          duplicate_reason: pr.duplicate_reason || null,
-          matched_investment_transaction_id: pr.matched_investment_transaction_id || null,
-        }, client);
+      // We only insert raw data initially, parse happens in Step 2
+      let rowIndex = 1;
+      const batchRows = rawRecords.map(row => ({
+        import_id: importRec.id,
+        source_row_number: rowIndex++,
+        raw_data: row,
+        parse_status: 'PENDING',
+        validation_status: 'PENDING'
+      }));
+
+      // Insert raw rows
+      for (const row of batchRows) {
+        await QueryHelper.insert('investment_import_rows', row, client);
       }
 
       return {
-        batchId: batch.id,
-        metrics: {
-          totalRows: rows.length,
-          validRows,
-          duplicateRows,
-          invalidRows,
-        },
-        rows: parsedRows,
+        importId: importRec.id,
+        headers,
+        detectedMapping,
+        totalRows: rawRecords.length
       };
     });
   }
 
   /**
-   * Commit parsed import batch to investment ledger
+   * Step 2: Parse and Validate rows using provided mapping
    */
-  static async commit(batchId: string, householdId: string, userId: string, includeDuplicates = false) {
-    const batch = await QueryHelper.queryOne<{ id: string; investment_account_id: string; status: string }>(
-      `SELECT * FROM investment_import_batches WHERE id = $1 AND household_id = $2`,
-      [batchId, householdId]
+  static async parseAndValidate(importId: string, householdId: string, mapping: ColumnMapping) {
+    const importRec = await QueryHelper.queryOne<any>(
+      `SELECT * FROM investment_imports WHERE id = $1 AND family_id = $2`,
+      [importId, householdId]
     );
 
-    if (!batch) {
-      const error: any = new Error('Import batch not found');
-      error.status = 404;
-      error.code = 'BATCH_NOT_FOUND';
-      throw error;
-    }
-
-    if (batch.status === 'COMMITTED') {
-      const error: any = new Error('Import batch has already been committed');
-      error.status = 400;
-      error.code = 'BATCH_ALREADY_COMMITTED';
-      throw error;
-    }
+    if (!importRec) throw new Error('Import not found');
 
     const rows = await QueryHelper.query<any>(
-      `SELECT * FROM investment_import_rows WHERE batch_id = $1 ORDER BY row_index ASC`,
-      [batchId]
+      `SELECT * FROM investment_import_rows WHERE import_id = $1 ORDER BY source_row_number ASC`,
+      [importId]
+    );
+
+    // Fetch securities
+    const allSecurities = await QueryHelper.query<any>(`SELECT id, symbol, isin, name, security_type FROM securities`);
+    const isinMap = new Map<string, any>();
+    const symbolMap = new Map<string, any>();
+    allSecurities.forEach((s) => {
+      if (s.isin) isinMap.set(s.isin.toUpperCase(), s);
+      symbolMap.set(s.symbol.toUpperCase(), s);
+    });
+
+    let validRows = 0, invalidRows = 0, duplicateRows = 0, parsedRowsCount = 0;
+    const seenFingerprints = new Set<string>();
+
+    await QueryHelper.transaction(async (client) => {
+      for (const row of rows) {
+        let normData;
+        try {
+          normData = GenericCsvParser.normalizeRow(
+            row.raw_data,
+            mapping,
+            importRec.import_mode,
+            importRec.investment_type,
+            importRec.investment_account_id
+          );
+        } catch (err: any) {
+          await QueryHelper.update('investment_import_rows', row.id, {
+            parse_status: 'FAILED',
+            validation_status: 'INVALID',
+            error_message: err.message
+          }, '', [], client);
+          invalidRows++;
+          continue;
+        }
+
+        parsedRowsCount++;
+
+        // Match Security
+        let matchedSecurityId = null;
+        if (normData.isin && isinMap.has(normData.isin.toUpperCase())) {
+          matchedSecurityId = isinMap.get(normData.isin.toUpperCase()).id;
+        } else if (normData.symbol && symbolMap.has(normData.symbol.toUpperCase())) {
+          matchedSecurityId = symbolMap.get(normData.symbol.toUpperCase()).id;
+        }
+
+        // Validate basic constraints
+        if (!normData.symbol || (!normData.quantity && !normData.amount && !normData.investedAmount)) {
+          await QueryHelper.update('investment_import_rows', row.id, {
+            parse_status: 'SUCCESS',
+            normalized_data: normData,
+            validation_status: 'INVALID',
+            error_message: 'Missing symbol or positive quantity/amount',
+            matched_security_id: matchedSecurityId
+          }, '', [], client);
+          invalidRows++;
+          continue;
+        }
+
+        if (importRec.import_mode === 'TRANSACTIONS') {
+          // Check Duplicates
+          const hash = normData.import_hash;
+          if (seenFingerprints.has(hash)) {
+            await QueryHelper.update('investment_import_rows', row.id, {
+              parse_status: 'SUCCESS',
+              normalized_data: normData,
+              validation_status: 'DUPLICATE',
+              error_message: 'Duplicate within uploaded statement file',
+              matched_security_id: matchedSecurityId
+            }, '', [], client);
+            duplicateRows++;
+            continue;
+          }
+          seenFingerprints.add(hash);
+
+          const existingInDb = await QueryHelper.queryOne<{ id: string }>(
+            `SELECT id FROM investment_transactions WHERE import_hash = $1`,
+            [hash]
+          );
+
+          if (existingInDb) {
+            await QueryHelper.update('investment_import_rows', row.id, {
+              parse_status: 'SUCCESS',
+              normalized_data: normData,
+              validation_status: 'DUPLICATE',
+              error_message: 'Transaction already recorded in ledger',
+              matched_security_id: matchedSecurityId
+            }, '', [], client);
+            duplicateRows++;
+            continue;
+          }
+        } else {
+          // HOLDINGS Duplicate check: exact same as_of_date and symbol in this import?
+          const hash = `${normData.symbol}_${normData.asOfDate}`;
+          if (seenFingerprints.has(hash)) {
+            await QueryHelper.update('investment_import_rows', row.id, {
+              parse_status: 'SUCCESS',
+              normalized_data: normData,
+              validation_status: 'DUPLICATE',
+              error_message: 'Duplicate holding entry for same date in file',
+              matched_security_id: matchedSecurityId
+            }, '', [], client);
+            duplicateRows++;
+            continue;
+          }
+          seenFingerprints.add(hash);
+          
+          // Also check DB for holding on same date for same security
+          if (matchedSecurityId) {
+            const existingInDb = await QueryHelper.queryOne<{ id: string }>(
+              `SELECT id FROM investment_holdings WHERE investment_account_id = $1 AND instrument_id = $2 AND as_of_date = $3`,
+              [importRec.investment_account_id, matchedSecurityId, normData.asOfDate]
+            );
+            if (existingInDb) {
+              await QueryHelper.update('investment_import_rows', row.id, {
+                parse_status: 'SUCCESS',
+                normalized_data: normData,
+                validation_status: 'DUPLICATE',
+                error_message: 'Holding snapshot already exists for this date',
+                matched_security_id: matchedSecurityId
+              }, '', [], client);
+              duplicateRows++;
+              continue;
+            }
+          }
+        }
+
+        // Valid
+        await QueryHelper.update('investment_import_rows', row.id, {
+          parse_status: 'SUCCESS',
+          normalized_data: normData,
+          validation_status: 'VALID',
+          matched_security_id: matchedSecurityId
+        }, '', [], client);
+        validRows++;
+      }
+
+      await QueryHelper.update('investment_imports', importId, {
+        status: 'READY_FOR_REVIEW',
+        parsed_rows: parsedRowsCount,
+        valid_rows: validRows,
+        invalid_rows: invalidRows
+      }, '', [], client);
+    });
+
+    return { importId, validRows, invalidRows, duplicateRows };
+  }
+
+  /**
+   * Step 3: Get preview details
+   */
+  static async getPreview(importId: string, householdId: string) {
+    const importRec = await QueryHelper.queryOne<any>(
+      `SELECT * FROM investment_imports WHERE id = $1 AND family_id = $2`,
+      [importId, householdId]
+    );
+
+    if (!importRec) throw new Error('Import not found');
+
+    const rows = await QueryHelper.query<any>(
+      `SELECT * FROM investment_import_rows WHERE import_id = $1 ORDER BY source_row_number ASC`,
+      [importId]
+    );
+
+    return {
+      import: importRec,
+      rows: rows
+    };
+  }
+
+  /**
+   * Step 4: Commit
+   */
+  static async commit(importId: string, householdId: string, userId: string, includeDuplicates = false) {
+    const importRec = await QueryHelper.queryOne<any>(
+      `SELECT * FROM investment_imports WHERE id = $1 AND family_id = $2`,
+      [importId, householdId]
+    );
+
+    if (!importRec) throw new Error('Import not found');
+    if (importRec.status === 'COMPLETED') throw new Error('Import already completed');
+
+    const rows = await QueryHelper.query<any>(
+      `SELECT * FROM investment_import_rows WHERE import_id = $1 ORDER BY source_row_number ASC`,
+      [importId]
     );
 
     let importedCount = 0;
 
     await QueryHelper.transaction(async (client) => {
-      for (const row of rows) {
-        if (row.status === 'INVALID') continue;
-        if (row.status === 'DUPLICATE' && !includeDuplicates) continue;
+      await QueryHelper.update('investment_imports', importId, { status: 'IMPORTING' }, '', [], client);
 
-        const p = row.parsed_data;
+      for (const row of rows) {
+        if (row.validation_status === 'INVALID' || row.parse_status !== 'SUCCESS') continue;
+        if (row.validation_status === 'DUPLICATE' && !includeDuplicates) continue;
+
+        const p = row.normalized_data;
         let securityId = row.matched_security_id;
 
-        // Auto-provision security if not existing
+        // Auto-provision security
         if (!securityId) {
           const sec = await SecuritiesService.findOrCreate({
             symbol: p.symbol,
             isin: p.isin || null,
             name: p.symbol,
-            security_type: p.type === 'SIP' ? 'MUTUAL_FUND' : 'STOCK',
-            initial_price: p.price || undefined,
+            security_type: importRec.investment_type,
+            initial_price: p.price || p.currentPrice || undefined,
           }, userId);
           securityId = sec.id;
+          
+          // update row
+          await QueryHelper.update('investment_import_rows', row.id, { matched_security_id: securityId }, '', [], client);
         }
 
-        const net = p.amount || (p.quantity * p.price + (p.fees || 0) + (p.taxes || 0));
-
-        await QueryHelper.insert('investment_transactions', {
-          household_id: householdId,
-          investment_account_id: batch.investment_account_id,
-          security_id: securityId,
-          transaction_type: p.type,
-          transaction_date: p.date,
-          quantity: p.quantity,
-          price_per_unit: p.price,
-          gross_amount: p.quantity * p.price,
-          fees: p.fees || 0,
-          taxes: p.taxes || 0,
-          net_amount: net,
-          currency: 'INR',
-          source: 'CSV_IMPORT',
-          status: 'CONFIRMED',
-          import_hash: p.import_hash || null,
-          external_reference: p.reference || null,
-          created_by: userId,
-        }, client);
+        if (importRec.import_mode === 'TRANSACTIONS') {
+          await QueryHelper.insert('investment_transactions', {
+            household_id: householdId,
+            investment_account_id: importRec.investment_account_id,
+            security_id: securityId,
+            transaction_type: p.type,
+            transaction_date: p.date,
+            quantity: p.quantity,
+            price_per_unit: p.price,
+            gross_amount: p.quantity * p.price,
+            fees: p.fees || 0,
+            taxes: p.taxes || 0,
+            net_amount: p.amount || (p.quantity * p.price + (p.fees || 0) + (p.taxes || 0)),
+            currency: 'INR',
+            source: 'CSV_IMPORT',
+            status: 'CONFIRMED',
+            import_hash: p.import_hash || null,
+            external_reference: p.reference || null,
+            created_by: userId,
+            source_import_id: importId,
+            source_import_row_id: row.id
+          }, client);
+        } else {
+          // HOLDINGS
+          await QueryHelper.insert('investment_holdings', {
+            family_id: householdId,
+            user_id: userId,
+            investment_account_id: importRec.investment_account_id,
+            instrument_id: securityId,
+            quantity: p.quantity,
+            average_cost: p.averageCost,
+            invested_amount: p.investedAmount,
+            current_price: p.currentPrice,
+            current_value: p.currentValue,
+            as_of_date: p.asOfDate,
+            source_import_id: importId,
+            source_import_row_id: row.id
+          }, client);
+        }
 
         importedCount++;
       }
 
-      await QueryHelper.update('investment_import_batches', batchId, { status: 'COMMITTED' }, '', [], client);
-      await logAudit(householdId, userId, 'INVESTMENT_IMPORT_BATCH', batchId, 'IMPORT', null, { importedCount }, client);
+      await QueryHelper.update('investment_imports', importId, { 
+        status: 'COMPLETED',
+        completed_at: new Date()
+      }, '', [], client);
+      
+      await logAudit(householdId, userId, 'INVESTMENT_IMPORT', importId, 'IMPORT_COMMITTED', null, { importedCount, mode: importRec.import_mode }, client);
     });
 
     return { importedCount };

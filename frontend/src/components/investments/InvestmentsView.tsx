@@ -7,7 +7,7 @@ import { SecurityDetailModal } from './SecurityDetailModal';
 import { RecordTradeModal } from './RecordTradeModal';
 import { FixedDepositsSection } from './FixedDepositsSection';
 import { RetirementSection } from './RetirementSection';
-import { InvestmentImportModal } from './InvestmentImportModal';
+import { InvestmentImportWizard } from './ImportWizard/InvestmentImportWizard';
 import {
   TrendingUp,
   PieChart,
@@ -309,7 +309,7 @@ export const InvestmentsView: React.FC = () => {
 
       {/* Import Modal */}
       {showImportModal && (
-        <InvestmentImportModal
+        <InvestmentImportWizard
           accounts={accounts}
           onClose={() => setShowImportModal(false)}
           onSuccess={() => {

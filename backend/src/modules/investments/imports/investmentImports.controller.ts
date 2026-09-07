@@ -4,15 +4,16 @@ import { checkAccountAccess } from '../../../middleware/rbac.js';
 import { getHouseholdId, getParam } from '../../../utils/request.js';
 
 export class InvestmentImportsController {
-  static async preview(req: Request, res: Response, next: NextFunction) {
+  
+  static async upload(req: Request, res: Response, next: NextFunction) {
     try {
       const householdId = getHouseholdId(req);
-      const { investment_account_id, filename, csv_content } = req.body;
+      const { investment_account_id, investment_type, import_mode, filename, csv_content } = req.body;
 
-      if (!investment_account_id || !csv_content) {
+      if (!investment_account_id || !investment_type || !import_mode || !csv_content) {
         res.status(400).json({
           success: false,
-          error: { code: 'INVALID_INPUT', message: 'investment_account_id and csv_content are required' },
+          error: { code: 'INVALID_INPUT', message: 'Missing required fields' },
         });
         return;
       }
@@ -26,15 +27,47 @@ export class InvestmentImportsController {
         return;
       }
 
-      const preview = await InvestmentImportsService.preview(
-        investment_account_id,
+      const result = await InvestmentImportsService.createImport(
         householdId,
         req.user!.id,
+        investment_account_id,
+        investment_type,
+        import_mode,
         filename || 'statement.csv',
         csv_content
       );
 
-      res.json({ success: true, data: preview });
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async parse(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = getParam(req, 'id');
+      const householdId = getHouseholdId(req);
+      const { mapping } = req.body;
+
+      if (!mapping) {
+        res.status(400).json({ success: false, error: { message: 'Column mapping is required' }});
+        return;
+      }
+
+      const result = await InvestmentImportsService.parseAndValidate(id, householdId, mapping);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async preview(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = getParam(req, 'id');
+      const householdId = getHouseholdId(req);
+
+      const result = await InvestmentImportsService.getPreview(id, householdId);
+      res.json({ success: true, data: result });
     } catch (error) {
       next(error);
     }

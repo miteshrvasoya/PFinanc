@@ -30,6 +30,9 @@ export interface SecurityHolding {
   account_name?: string;
   owner_name?: string;
   lots?: BuyLot[];
+  snapshot_reconciliation?: boolean;
+  as_of_date?: string;
+  snapshot?: SecurityHolding;
 }
 
 export class HoldingsService {
@@ -213,6 +216,108 @@ export class HoldingsService {
         });
       }
     });
+
+    const snapshotConditions = ['ih.family_id = $1'];
+    const snapshotParams: any[] = [filter.householdId];
+
+    if (filter.accountId) {
+      snapshotParams.push(filter.accountId);
+      snapshotConditions.push(`ih.investment_account_id = $${snapshotParams.length}`);
+    }
+
+    if (filter.securityId) {
+      snapshotParams.push(filter.securityId);
+      snapshotConditions.push(`ih.instrument_id = $${snapshotParams.length}`);
+    }
+
+    const snapshotWhereClause = snapshotConditions.join(' AND ');
+
+    // Fetch the latest holding snapshots per instrument/account
+    const snapshotSql = `
+      WITH RankedSnapshots AS (
+        SELECT 
+          ih.*,
+          a.name AS account_name,
+          a.owner_user_id,
+          u.name AS owner_name,
+          s.symbol,
+          s.isin,
+          s.name AS security_name,
+          s.security_type,
+          s.asset_class,
+          s.exchange,
+          CAST(p.close AS FLOAT) AS latest_price,
+          p.price_date,
+          COALESCE(p.is_stale, false) AS is_stale,
+          ROW_NUMBER() OVER(PARTITION BY ih.instrument_id, ih.investment_account_id ORDER BY ih.as_of_date DESC) as rnk
+        FROM investment_holdings ih
+        JOIN accounts a ON a.id = ih.investment_account_id
+        JOIN users u ON u.id = a.owner_user_id
+        JOIN securities s ON s.id = ih.instrument_id
+        LEFT JOIN LATERAL (
+          SELECT close, price_date, is_stale
+          FROM security_prices sp
+          WHERE sp.security_id = s.id
+          ORDER BY price_date DESC
+          LIMIT 1
+        ) p ON true
+        WHERE ${snapshotWhereClause}
+      )
+      SELECT * FROM RankedSnapshots WHERE rnk = 1
+    `;
+
+    const rawSnapshots = await QueryHelper.query(snapshotSql, snapshotParams);
+
+    // Merge snapshots into holdings
+    // If a position exists from transactions, we flag it for reconciliation.
+    // If it only exists as a snapshot, we add it.
+    for (const snap of rawSnapshots) {
+      const key = `${snap.instrument_id}_${snap.investment_account_id}`;
+      
+      const currentPrice = snap.latest_price || parseFloat(snap.current_price) || parseFloat(snap.average_cost);
+      const currentValue = parseFloat(snap.quantity) * currentPrice;
+      const totalInvested = parseFloat(snap.quantity) * parseFloat(snap.average_cost || 0);
+      const unrealizedPnL = currentValue - totalInvested;
+      const unrealizedPnLPercent = totalInvested > 0 ? (unrealizedPnL / totalInvested) * 100 : 0;
+      
+      const snapHolding: SecurityHolding = {
+        security_id: snap.instrument_id,
+        symbol: snap.symbol,
+        isin: snap.isin,
+        name: snap.security_name,
+        security_type: snap.security_type,
+        asset_class: snap.asset_class,
+        exchange: snap.exchange,
+        current_quantity: parseFloat(snap.quantity),
+        average_cost: parseFloat(snap.average_cost || 0),
+        total_invested: totalInvested,
+        current_price: currentPrice,
+        price_date: snap.price_date,
+        is_stale: snap.is_stale,
+        current_value: currentValue,
+        unrealized_pnl: unrealizedPnL,
+        unrealized_pnl_percent: unrealizedPnLPercent,
+        realized_pnl: 0,
+        total_dividends: 0,
+        account_id: snap.investment_account_id,
+        account_name: snap.account_name,
+        owner_name: snap.owner_name,
+        lots: [],
+        snapshot_reconciliation: true, // Flag to UI
+        as_of_date: snap.as_of_date
+      };
+
+      const existingIndex = holdings.findIndex(h => h.security_id === snap.instrument_id && h.account_id === snap.investment_account_id);
+      
+      if (existingIndex >= 0) {
+        // Both transaction history and holding snapshot exist!
+        // We attach the snapshot data for UI reconciliation purposes
+        (holdings[existingIndex] as any).snapshot = snapHolding;
+      } else {
+        // Only holding snapshot exists, append to portfolio
+        holdings.push(snapHolding);
+      }
+    }
 
     return holdings.sort((a, b) => b.current_value - a.current_value);
   }
