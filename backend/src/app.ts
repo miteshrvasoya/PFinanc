@@ -19,6 +19,8 @@ import { classificationRoutes } from './modules/classification/classification.ro
 import { physicalAssetsRoutes } from './modules/physical-assets/physicalAssets.routes.js';
 import { invitationsRoutes } from './modules/invitations/invitations.routes.js';
 import { statementImportsRoutes } from './modules/statement-imports/statementImports.routes.js';
+import { aiAdvisorRouter } from './modules/ai-advisor/aiAdvisor.routes.js';
+import { AIAdvisorScheduler } from './modules/ai-advisor/aiAdvisor.scheduler.js';
 
 export const app = express();
 
@@ -55,6 +57,7 @@ app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/classification', classificationRoutes);
 app.use('/api/physical-assets', physicalAssetsRoutes);
 app.use('/api/invitations', invitationsRoutes);
+app.use('/api/ai-advisor', aiAdvisorRouter);
 
 // Error Handler
 app.use(errorHandler);
@@ -70,6 +73,7 @@ if (process.env.NODE_ENV !== 'test') {
 
       app.listen(PORT, () => {
         console.log(`PFinanc Backend API server listening on http://localhost:${PORT}`);
+        AIAdvisorScheduler.start();
       });
     } catch (err) {
       console.error('Failed to initialize database on startup:', err);

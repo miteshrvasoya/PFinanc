@@ -10,6 +10,7 @@ import {
   Users,
   BarChart3,
   ShieldCheck,
+  BotMessageSquare,
 } from 'lucide-react';
 
 import Link from 'next/link';
@@ -29,6 +30,7 @@ export const Sidebar: React.FC = () => {
     { id: 'categories', href: '/categories', label: 'Categories', icon: <FolderTree className="w-5 h-5" /> },
     { id: 'family', href: '/family', label: 'Family & Roles', icon: <Users className="w-5 h-5" /> },
     { id: 'analytics', href: '/analytics', label: 'Analytics', icon: <BarChart3 className="w-5 h-5" /> },
+    { id: 'ai-advisor', href: '/ai-advisor', label: 'AI Advisor', icon: <BotMessageSquare className="w-5 h-5" /> },
   ];
 
   return (

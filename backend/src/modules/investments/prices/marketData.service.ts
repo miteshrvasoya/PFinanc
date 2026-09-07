@@ -17,9 +17,184 @@ export interface IMarketDataProvider {
   getQuotes(securities: Array<{ id: string; symbol: string; isin?: string | null; exchange: string; security_type: string }>): Promise<Map<string, MarketQuote>>;
 }
 
-/**
- * Built-in Indian Market Data Provider with curated EOD quotes & live estimation
- */
+// ─── Yahoo Finance Provider ──────────────────────────────────────────────────
+
+export class YahooFinanceProvider implements IMarketDataProvider {
+  name = 'YAHOO_FINANCE';
+
+  private toYahooSymbol(symbol: string, exchange: string, type: string): string {
+    const sym = symbol.toUpperCase();
+    if (type === 'MUTUAL_FUND') return '';          // Yahoo doesn't carry Indian MF NAV reliably
+    if (exchange === 'BSE') return `${sym}.BO`;
+    if (exchange === 'NSE') return `${sym}.NS`;
+    return `${sym}.NS`;                             // default to NSE
+  }
+
+  async getQuotes(
+    securities: Array<{ id: string; symbol: string; isin?: string | null; exchange: string; security_type: string }>
+  ): Promise<Map<string, MarketQuote>> {
+    const results = new Map<string, MarketQuote>();
+    const today = new Date().toISOString().split('T')[0];
+
+    // Filter to securities Yahoo supports (not MF)
+    const eligible = securities.filter(s => s.security_type !== 'MUTUAL_FUND');
+    if (eligible.length === 0) return results;
+
+    const symbolMap = new Map<string, string>(); // yahooSym → securityId
+    const yahooSymbols: string[] = [];
+
+    for (const sec of eligible) {
+      const ySym = this.toYahooSymbol(sec.symbol, sec.exchange, sec.security_type);
+      if (ySym) {
+        yahooSymbols.push(ySym);
+        symbolMap.set(ySym, sec.id);
+      }
+    }
+
+    if (yahooSymbols.length === 0) return results;
+
+    try {
+      // Use unofficial Yahoo Finance v8 quote endpoint (no API key needed)
+      const encoded = yahooSymbols.join(',');
+      const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(encoded)}&fields=regularMarketPrice,regularMarketOpen,regularMarketDayHigh,regularMarketDayLow,currency`;
+
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; PFinanc/1.0)',
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (!response.ok) throw new Error(`Yahoo Finance returned ${response.status}`);
+
+      const json = await response.json() as any;
+      const quoteList: any[] = json?.quoteResponse?.result || [];
+
+      for (const q of quoteList) {
+        const secId = symbolMap.get(q.symbol);
+        if (!secId || !q.regularMarketPrice) continue;
+
+        results.set(secId, {
+          securityId: secId,
+          price: q.regularMarketPrice,
+          open: q.regularMarketOpen,
+          high: q.regularMarketDayHigh,
+          low: q.regularMarketDayLow,
+          priceDate: today,
+          currency: q.currency || 'INR',
+          source: this.name,
+          isStale: false,
+        });
+      }
+    } catch (err) {
+      console.warn('[YahooFinanceProvider] Fetch failed:', (err as Error).message);
+    }
+
+    return results;
+  }
+}
+
+// ─── MFAPI.in Provider (Indian Mutual Fund NAV) ───────────────────────────────
+
+export class MFApiProvider implements IMarketDataProvider {
+  name = 'MFAPI_IN';
+
+  /** Resolve AMFI scheme code from ISIN using mfapi search */
+  private async resolveSchemeCode(isin: string): Promise<string | null> {
+    try {
+      const url = `https://api.mfapi.in/mf/search?q=${encodeURIComponent(isin)}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) return null;
+      const data = await res.json() as any[];
+      return data?.[0]?.schemeCode ? String(data[0].schemeCode) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async getQuotes(
+    securities: Array<{ id: string; symbol: string; isin?: string | null; exchange: string; security_type: string }>
+  ): Promise<Map<string, MarketQuote>> {
+    const results = new Map<string, MarketQuote>();
+    const today = new Date().toISOString().split('T')[0];
+
+    const mfSecurities = securities.filter(s => s.security_type === 'MUTUAL_FUND');
+    if (mfSecurities.length === 0) return results;
+
+    for (const sec of mfSecurities) {
+      try {
+        let schemeCode: string | null = null;
+
+        // Try ISIN-based lookup first
+        if (sec.isin) {
+          schemeCode = await this.resolveSchemeCode(sec.isin);
+        }
+
+        // Fallback: search by symbol name
+        if (!schemeCode && sec.symbol) {
+          schemeCode = await this.resolveSchemeCode(sec.symbol);
+        }
+
+        if (!schemeCode) continue;
+
+        const navUrl = `https://api.mfapi.in/mf/${schemeCode}/latest`;
+        const navRes = await fetch(navUrl, { signal: AbortSignal.timeout(5000) });
+        if (!navRes.ok) continue;
+
+        const navData = await navRes.json() as any;
+        const navEntry = navData?.data?.[0];
+        if (!navEntry?.nav) continue;
+
+        const price = parseFloat(navEntry.nav);
+        if (isNaN(price) || price <= 0) continue;
+
+        results.set(sec.id, {
+          securityId: sec.id,
+          price,
+          priceDate: navEntry.date || today,
+          currency: 'INR',
+          source: this.name,
+          isStale: false,
+        });
+      } catch (err) {
+        console.warn(`[MFApiProvider] Failed for ${sec.symbol}:`, (err as Error).message);
+      }
+    }
+
+    return results;
+  }
+}
+
+// ─── Chained Provider (tries multiple sources) ────────────────────────────────
+
+export class ChainedMarketDataProvider implements IMarketDataProvider {
+  name = 'CHAINED_PROVIDER';
+
+  constructor(private providers: IMarketDataProvider[]) {}
+
+  async getQuotes(
+    securities: Array<{ id: string; symbol: string; isin?: string | null; exchange: string; security_type: string }>
+  ): Promise<Map<string, MarketQuote>> {
+    const results = new Map<string, MarketQuote>();
+    let remaining = [...securities];
+
+    for (const provider of this.providers) {
+      if (remaining.length === 0) break;
+      try {
+        const partial = await provider.getQuotes(remaining);
+        partial.forEach((quote, id) => results.set(id, quote));
+        remaining = remaining.filter(s => !results.has(s.id));
+      } catch (err) {
+        console.warn(`[ChainedProvider] Provider ${provider.name} failed:`, (err as Error).message);
+      }
+    }
+
+    return results;
+  }
+}
+
+// ─── Mock / Fallback Provider (used as last resort) ───────────────────────────
+
 export class IndianMarketDataProvider implements IMarketDataProvider {
   name = 'INDIAN_MARKET_PROVIDER';
 
@@ -46,7 +221,6 @@ export class IndianMarketDataProvider implements IMarketDataProvider {
       const normalizedSym = sec.symbol.toUpperCase().replace(/[^A-Z0-9_]/g, '');
       let price = this.mockMasterQuotes[normalizedSym];
 
-      // If not in standard list, look up previous price or calculate steady quote
       if (!price) {
         const latestPriceRow = await QueryHelper.queryOne<{ close: string }>(
           `SELECT close FROM security_prices WHERE security_id = $1 ORDER BY price_date DESC LIMIT 1`,
@@ -74,8 +248,17 @@ export class IndianMarketDataProvider implements IMarketDataProvider {
   }
 }
 
+// ─── Market Data Service ──────────────────────────────────────────────────────
+
 export class MarketDataService {
-  private static provider: IMarketDataProvider = new IndianMarketDataProvider();
+  /**
+   * Default chained provider: Yahoo Finance → MF API → Mock fallback
+   */
+  private static provider: IMarketDataProvider = new ChainedMarketDataProvider([
+    new YahooFinanceProvider(),
+    new MFApiProvider(),
+    new IndianMarketDataProvider(),
+  ]);
 
   static setProvider(customProvider: IMarketDataProvider) {
     this.provider = customProvider;
@@ -152,7 +335,6 @@ export class MarketDataService {
       }
     } catch (err) {
       console.error('Market data fetch failure:', err);
-      // Ensure existing prices are marked stale without zeroing out values
       for (const sec of securities) {
         await QueryHelper.query(
           `UPDATE security_prices SET is_stale = true WHERE security_id = $1`,
@@ -167,6 +349,15 @@ export class MarketDataService {
       updated: updatedCount,
       stale: staleCount,
     };
+  }
+
+  /**
+   * Fetch live quotes for a specific set of securities (used by AI Advisor)
+   */
+  static async getLiveQuotes(
+    securities: Array<{ id: string; symbol: string; isin?: string | null; exchange: string; security_type: string }>
+  ): Promise<Map<string, MarketQuote>> {
+    return this.provider.getQuotes(securities);
   }
 
   /**

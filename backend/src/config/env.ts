@@ -20,9 +20,18 @@ export const config = {
   },
   openRouter: {
     apiKey: process.env.OPENROUTER_API_KEY,
-    model: process.env.OPENROUTER_MODEL,
+    model: process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-4-5',
     siteUrl: process.env.OPENROUTER_SITE_URL || 'http://localhost:3000',
     appName: process.env.OPENROUTER_APP_NAME || 'PFinanc',
+  },
+  aiProviders: {
+    openAiApiKey: process.env.OPENAI_API_KEY,
+    geminiApiKey: process.env.GEMINI_API_KEY,
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+  },
+  aiAdvisor: {
+    defaultSchedule: process.env.AI_ADVISOR_DEFAULT_SCHEDULE || '30 3 * * *',
+    enabled: process.env.AI_ADVISOR_ENABLED !== 'false',
   },
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3000',
 };

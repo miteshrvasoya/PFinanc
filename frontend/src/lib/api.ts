@@ -617,6 +617,61 @@ class ApiClient {
       }),
     });
   }
+
+  // ==========================================
+  // AI ADVISOR
+  // ==========================================
+
+  async getAIAdvisorConfig() {
+    return this.request('/ai-advisor/config');
+  }
+
+  async updateAIAdvisorConfig(data: {
+    aiProvider?: string;
+    modelName?: string;
+    apiKeyOverride?: string;
+    scheduleCron?: string;
+    isEnabled?: boolean;
+    monthlySipBudgetInr?: number | null;
+    monthlyStockBudgetInr?: number | null;
+  }) {
+    return this.request('/ai-advisor/config', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async triggerAIAdvisorRun() {
+    return this.request('/ai-advisor/run', { method: 'POST' });
+  }
+
+  async getAIAdvisorRuns(limit = 20) {
+    return this.request(`/ai-advisor/runs?limit=${limit}`);
+  }
+
+  async getAIAdvisorReports(limit = 20) {
+    return this.request(`/ai-advisor/reports?limit=${limit}`);
+  }
+
+  async getLatestAIAdvisorReport() {
+    return this.request('/ai-advisor/reports/latest');
+  }
+
+  async getAIAdvisorReport(id: string) {
+    return this.request(`/ai-advisor/reports/${id}`);
+  }
+
+  async getAIAdvisorNotifications() {
+    return this.request('/ai-advisor/notifications');
+  }
+
+  async markAIAdvisorNotificationsRead() {
+    return this.request('/ai-advisor/notifications/read-all', { method: 'POST' });
+  }
+
+  async getAIAdvisorModels() {
+    return this.request('/ai-advisor/models');
+  }
 }
 
 export const api = new ApiClient();
