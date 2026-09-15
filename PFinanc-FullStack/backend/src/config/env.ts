@@ -15,7 +15,7 @@ export const config = {
     password: process.env.DB_PASSWORD || 'postgres',
   },
   jwt: {
-    secret: process.env.JWT_SECRET || 'super_secure_pfinanc_family_secret_key_2026_jwt',
+    secret: process.env.JWT_SECRET || 'your_jwt_secret_key_here',
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   },
   openRouter: {
