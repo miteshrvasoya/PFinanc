@@ -20,6 +20,7 @@ import { physicalAssetsRoutes } from './modules/physical-assets/physicalAssets.r
 import { invitationsRoutes } from './modules/invitations/invitations.routes.js';
 import { statementImportsRoutes } from './modules/statement-imports/statementImports.routes.js';
 import { aiAdvisorRouter } from './modules/ai-advisor/aiAdvisor.routes.js';
+import { automationRouter } from './modules/automation/automation.routes.js';
 import { AIAdvisorScheduler } from './modules/ai-advisor/aiAdvisor.scheduler.js';
 
 export const app = express();
@@ -58,6 +59,7 @@ app.use('/api/classification', classificationRoutes);
 app.use('/api/physical-assets', physicalAssetsRoutes);
 app.use('/api/invitations', invitationsRoutes);
 app.use('/api/ai-advisor', aiAdvisorRouter);
+app.use('/api/automation', automationRouter);
 
 // Error Handler
 app.use(errorHandler);
@@ -71,8 +73,8 @@ if (process.env.NODE_ENV !== 'test') {
       await runMigrations();
       await runSystemSeed();
 
-      app.listen(PORT, () => {
-        console.log(`PFinanc Backend API server listening on http://localhost:${PORT}`);
+      app.listen(PORT, '0.0.0.0', () => {
+        console.log(`PFinanc Backend API server listening on http://0.0.0.0:${PORT}`);
         AIAdvisorScheduler.start();
       });
     } catch (err) {
