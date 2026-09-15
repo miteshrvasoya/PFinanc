@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Self-Hosted Personal & Family Finance Management Application",
   "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
     "migrate": "npm --prefix backend run migrate",
@@ -22,5 +23,8 @@
     "react"
   ],
   "author": "Mitesh Vasoya",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
 }

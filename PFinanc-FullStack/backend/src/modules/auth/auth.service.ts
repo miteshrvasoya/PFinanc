@@ -102,6 +102,7 @@ export class AuthService {
       return {
         user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url },
         token,
+        household: { id: household.id, name: household.name },
         defaultHouseholdId: household.id,
         isFirstUser,
       };
@@ -149,6 +150,7 @@ export class AuthService {
       user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url },
       token,
       households,
+      household: households.length > 0 ? households[0] : null,
       defaultHouseholdId: households.length > 0 ? households[0].id : null,
     };
   }
@@ -175,6 +177,6 @@ export class AuthService {
       [user.id]
     );
 
-    return { user, households };
+    return { user, households, household: households.length > 0 ? households[0] : null };
   }
 }

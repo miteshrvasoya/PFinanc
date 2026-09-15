@@ -6,11 +6,12 @@ ALTER TABLE securities ADD COLUMN IF NOT EXISTS scheme_code VARCHAR(100);
 ALTER TABLE securities ADD COLUMN IF NOT EXISTS amfi_code VARCHAR(100);
 
 -- 2. Drop existing stub import tables if they exist to replace with robust schema
+DROP TABLE IF EXISTS investment_imports CASCADE;
 DROP TABLE IF EXISTS investment_import_rows CASCADE;
 DROP TABLE IF EXISTS investment_import_batches CASCADE;
 
 -- 3. Create rigorous investment_imports table
-CREATE TABLE investment_imports (
+CREATE TABLE IF NOT EXISTS investment_imports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     family_id UUID NOT NULL REFERENCES households(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
@@ -40,7 +41,7 @@ CREATE TABLE investment_imports (
 );
 
 -- 4. Create investment_import_rows for full traceability
-CREATE TABLE investment_import_rows (
+CREATE TABLE IF NOT EXISTS investment_import_rows (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     import_id UUID NOT NULL REFERENCES investment_imports(id) ON DELETE CASCADE,
     
@@ -62,7 +63,8 @@ CREATE TABLE investment_import_rows (
 );
 
 -- 5. Create investment_holdings to store current portfolio snapshots
-CREATE TABLE investment_holdings (
+DROP TABLE IF EXISTS investment_holdings CASCADE;
+CREATE TABLE IF NOT EXISTS investment_holdings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     family_id UUID NOT NULL REFERENCES households(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
@@ -92,6 +94,6 @@ ALTER TABLE investment_transactions ADD COLUMN IF NOT EXISTS source_import_id UU
 ALTER TABLE investment_transactions ADD COLUMN IF NOT EXISTS source_import_row_id UUID REFERENCES investment_import_rows(id) ON DELETE SET NULL;
 
 -- 6. Indexes for performance
-CREATE INDEX idx_inv_import_rows_import ON investment_import_rows(import_id);
-CREATE INDEX idx_inv_holdings_account ON investment_holdings(investment_account_id);
-CREATE INDEX idx_inv_holdings_family_date ON investment_holdings(family_id, as_of_date DESC);
+CREATE INDEX IF NOT EXISTS idx_inv_import_rows_import ON investment_import_rows(import_id);
+CREATE INDEX IF NOT EXISTS idx_inv_holdings_account ON investment_holdings(investment_account_id);
+CREATE INDEX IF NOT EXISTS idx_inv_holdings_family_date ON investment_holdings(family_id, as_of_date DESC);

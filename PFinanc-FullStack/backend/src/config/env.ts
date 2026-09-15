@@ -33,5 +33,5 @@ export const config = {
     defaultSchedule: process.env.AI_ADVISOR_DEFAULT_SCHEDULE || '30 3 * * *',
     enabled: process.env.AI_ADVISOR_ENABLED !== 'false',
   },
-  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3001',
 };
