@@ -106,8 +106,10 @@ PFinanc/
 **Mitesh Vasoya**
 
 - 🐙 **GitHub:** [@miteshrvasoya](https://github.com/miteshrvasoya)
-- 💼 **LinkedIn:** [Mitesh Vasoya](https://www.linkedin.com/in/mitesh-vasoya/) *(Update link if necessary)*
-- ✉️ **Email:** mitesh@gmail.com
+- 🌐 **Portfolio:** [mitesh-vasoya.vercel.app](https://mitesh-vasoya.vercel.app)
+- 💼 **LinkedIn:** [Mitesh Vasoya](https://www.linkedin.com/in/mitesh-vasoya/)
+- 𝕏 **Twitter:** [@mitesh_rv](https://x.com/mitesh_rv)
+- ✉️ **Email:** mitesh.r.vasoya@gmail.com
 
 ---
 
