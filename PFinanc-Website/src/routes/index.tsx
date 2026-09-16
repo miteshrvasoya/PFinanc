@@ -42,9 +42,9 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: "PFinanc — Your finances, without the manual work" },
       { property: "og:description", content: "A privacy-first financial operating system for individuals and families." },
       { property: "og:type", content: "website" },
-      { property: "og:image", content: "https://94072ca1e40bc0af205e30876822d008.r2.cloudflarestorage.com/pfinanc/og-image.png" }, // IMPORTANT: Change this to your actual production domain!
+      { property: "og:image", content: "https://pub-595eff77dd1b4f74a7e97b4c8f1604ce.r2.dev/og-image.png" }, // IMPORTANT: Change this to your actual production domain!
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:image", content: "https://94072ca1e40bc0af205e30876822d008.r2.cloudflarestorage.com/pfinanc/og-image.png" }, // IMPORTANT: Change this to your actual production domain!
+      { name: "twitter:image", content: "https://pub-595eff77dd1b4f74a7e97b4c8f1604ce.r2.dev/og-image.png" }, // IMPORTANT: Change this to your actual production domain!
     ],
   }),
   component: Index,
