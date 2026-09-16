@@ -24,6 +24,16 @@ import {
 
 const github = "https://github.com/miteshrvasoya/PFinanc";
 
+const trackClick = (label: string) => {
+  if (typeof window !== "undefined" && (window as any).gtag) {
+    (window as any).gtag('event', 'click', {
+      event_category: 'outbound',
+      event_label: label,
+      transport_type: 'beacon'
+    });
+  }
+};
+
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
@@ -40,8 +50,8 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-function Action({ children, secondary = false }: { children: React.ReactNode; secondary?: boolean }) {
-  return <a href={github} target="_blank" rel="noreferrer" className={secondary ? "button-secondary" : "button-primary"}>{children}</a>;
+function Action({ children, secondary = false, onClick }: { children: React.ReactNode; secondary?: boolean; onClick?: () => void }) {
+  return <a href={github} target="_blank" rel="noreferrer" onClick={onClick} className={secondary ? "button-secondary" : "button-primary"}>{children}</a>;
 }
 
 function Label({ children }: { children: React.ReactNode }) {
@@ -75,7 +85,7 @@ function DashboardMockup() {
 }
 
 function Nav() {
-  return <header className="site-nav"><a href="#top" className="logo"><i/>PFinanc</a><nav><a href="#product">Product</a><a href="#how">How it works</a><a href="#privacy">Privacy</a><a href="#open-source">Open Source</a><a href="#roadmap">Roadmap</a><a href="#faq">FAQ</a></nav><div className="nav-actions"><a href={github} target="_blank" rel="noreferrer">GitHub ↗</a><Action>Try PFinanc <ArrowRight size={15}/></Action></div><details className="mobile-menu"><summary aria-label="Open menu"><Menu size={21}/></summary><div><a href="#product">Product</a><a href="#how">How it works</a><a href="#privacy">Privacy</a><a href="#roadmap">Roadmap</a><a href="#faq">FAQ</a></div></details></header>;
+  return <header className="site-nav"><a href="#top" className="logo"><i/>PFinanc</a><nav><a href="#product">Product</a><a href="#how">How it works</a><a href="#privacy">Privacy</a><a href="#open-source">Open Source</a><a href="#roadmap">Roadmap</a><a href="#faq">FAQ</a></nav><div className="nav-actions"><a href={github} target="_blank" rel="noreferrer" onClick={() => trackClick("Nav GitHub")}>GitHub ↗</a><Action onClick={() => trackClick("Nav Try PFinanc")}>Try PFinanc <ArrowRight size={15}/></Action></div><details className="mobile-menu"><summary aria-label="Open menu"><Menu size={21}/></summary><div><a href="#product">Product</a><a href="#how">How it works</a><a href="#privacy">Privacy</a><a href="#roadmap">Roadmap</a><a href="#faq">FAQ</a></div></details></header>;
 }
 
 function SmsAutomation() {
@@ -107,7 +117,7 @@ const automation = [
 function Index() {
   return <main id="top">
     <Nav />
-    <section className="hero"><div className="hero-copy"><Label>OPEN-SOURCE • PRIVACY-FIRST • PERSONAL FINANCE</Label><h1>Your finances, without the manual work.</h1><p className="hero-lead">PFinanc brings transactions, accounts, investments, cash flow, and net worth into one system.</p><p className="hero-sub">Built to reduce manual tracking—while keeping you in control of your financial data.</p><div className="hero-actions"><Action>Get Started <ArrowRight size={17}/></Action><Action secondary><Github size={17}/> View on GitHub ↗</Action></div><div className="trust"><ShieldCheck size={16}/> Open source <i/> Self-hostable <i/> Privacy-focused <i/> No money movement</div></div><div className="hero-visual"><DashboardMockup /></div><a href="#problem" className="scroll-cue" aria-label="Scroll to learn more"><ArrowDown size={18}/></a></section>
+    <section className="hero"><div className="hero-copy"><Label>OPEN-SOURCE • PRIVACY-FIRST • PERSONAL FINANCE</Label><h1>Your finances, without the manual work.</h1><p className="hero-lead">PFinanc brings transactions, accounts, investments, cash flow, and net worth into one system.</p><p className="hero-sub">Built to reduce manual tracking—while keeping you in control of your financial data.</p><div className="hero-actions"><Action onClick={() => trackClick("Hero Get Started")}>Get Started <ArrowRight size={17}/></Action><Action secondary onClick={() => trackClick("Hero View on GitHub")}><Github size={17}/> View on GitHub ↗</Action></div><div className="trust"><ShieldCheck size={16}/> Open source <i/> Self-hostable <i/> Privacy-focused <i/> No money movement</div></div><div className="hero-visual"><DashboardMockup /></div><a href="#problem" className="scroll-cue" aria-label="Scroll to learn more"><ArrowDown size={18}/></a></section>
 
     <section id="problem" className="problem section-wrap"><div className="problem-copy"><Label>THE PROBLEM</Label><h2>Your bank tracks the transaction.<br/><em>Why are you still typing it into a spreadsheet?</em></h2><p>Bank alerts, UPI notifications, statements, broker reports and CSV exports already contain the signals. Yet the financial picture still lives across spreadsheets, notes and disconnected apps.</p></div><div className="problem-list">{["Transactions get forgotten", "Categories become inconsistent", "Investments live somewhere else", "Transfers get counted incorrectly", "Family finances become fragmented", "Net worth becomes difficult to calculate"].map((x,i)=><div key={x}><span>0{i+1}</span>{x}</div>)}</div><div className="before-after"><div><small>THE OLD MODEL</small><p>Financial activity <ArrowRight/> Manual entry <ArrowRight/> Spreadsheet <ArrowRight/> Manual analysis</p></div><div className="new-model"><small>THE PFINANC MODEL</small><p>Financial activity <ArrowRight/> PFinanc <ArrowRight/> Structured ledger <ArrowRight/> Financial visibility</p></div></div></section>
 
@@ -127,16 +137,16 @@ function Index() {
 
     <section id="privacy" className="privacy"><div className="section-wrap privacy-grid"><div><Label>PRIVACY, NOT PROMISES</Label><h2>Your financial data is yours.</h2><p className="lead">Collect less. Expose less. Give the user control.</p><div className="privacy-list">{([[LockKeyhole,"Minimal data collection","Only collect what is necessary."],[MessageSquareText,"Selective processing","Process relevant financial signals—not your entire inbox."],[ShieldCheck,"On-device where practical","Especially important for Android SMS processing."],[Code2,"Transparent AI usage","Understand what is processed, where it goes and why."]] as Array<[LucideIcon, string, string]>).map(([Icon,t,c])=><div key={t}><Icon/><span><b>{t}</b><small>{c}</small></span></div>)}</div></div><div className="ai-boundary"><div className="ai-title"><Sparkles size={20}/><span>AI WITH GUARDRAILS</span></div><h3>AI can suggest.<br/>The application validates.<br/><em>The ledger stays deterministic.</em></h3><div className="vertical-flow">{["Raw input","Parsed data","AI interpretation","Validation","User approval","Transaction API","Financial ledger"].map((x,i)=><div key={x}><span>{x}</span>{i<6&&<ArrowDown/>}</div>)}</div><p>Known formats are parsed deterministically. AI helps only when a message is ambiguous.</p></div></div></section>
 
-    <section id="open-source" className="open-source"><div className="section-wrap"><SectionTitle eyebrow="OPEN SOURCE FIRST" title="Your financial system shouldn’t be a black box." copy="Inspect it. Self-host it. Fork it. Extend it. Contribute to it."/><div className="architecture"><div className="arch-sources"><span>SMS</span><span>CSV</span><span>Email</span><span>API</span></div><ArrowDown/><div className="arch-flow">{["Ingestion","Parsing","Validation","Candidate layer","Approval / rules","Transaction API","Financial ledger","Analytics / Net worth"].map((x,i)=><span key={x} className={i===6?"arch-focus":""}>{x}</span>)}</div><MockLabel/></div><div className="developer-row"><div><h3>Built for people who want to understand the system underneath.</h3><p>Modular boundaries, documented workflows and provider-agnostic AI. Core calculations and ledger operations stay functional without an AI provider.</p></div><div className="providers"><span>OpenRouter</span><span>OpenAI</span><span>Google</span><span>Anthropic</span><span>Local LLMs</span><span>Self-hosted</span></div></div><div className="center-actions"><Action><Github size={17}/> Explore the source</Action><Action secondary>Star PFinanc on GitHub ⭐</Action></div></div></section>
+    <section id="open-source" className="open-source"><div className="section-wrap"><SectionTitle eyebrow="OPEN SOURCE FIRST" title="Your financial system shouldn’t be a black box." copy="Inspect it. Self-host it. Fork it. Extend it. Contribute to it."/><div className="architecture"><div className="arch-sources"><span>SMS</span><span>CSV</span><span>Email</span><span>API</span></div><ArrowDown/><div className="arch-flow">{["Ingestion","Parsing","Validation","Candidate layer","Approval / rules","Transaction API","Financial ledger","Analytics / Net worth"].map((x,i)=><span key={x} className={i===6?"arch-focus":""}>{x}</span>)}</div><MockLabel/></div><div className="developer-row"><div><h3>Built for people who want to understand the system underneath.</h3><p>Modular boundaries, documented workflows and provider-agnostic AI. Core calculations and ledger operations stay functional without an AI provider.</p></div><div className="providers"><span>OpenRouter</span><span>OpenAI</span><span>Google</span><span>Anthropic</span><span>Local LLMs</span><span>Self-hosted</span></div></div><div className="center-actions"><Action onClick={() => trackClick("Open Source - Explore")}><Github size={17}/> Explore the source</Action><Action secondary onClick={() => trackClick("Open Source - Star")}>Star PFinanc on GitHub ⭐</Action></div></div></section>
 
     <section className="workflow section-wrap"><SectionTitle eyebrow="PRODUCT WORKFLOW" title="From financial event to financial insight."/><div className="timeline">{["Financial event","Detect","Parse","Validate","Candidate","Review","Transaction API","Ledger","Analytics","Net worth"].map((x,i)=><div key={x}><span>{String(i+1).padStart(2,"0")}</span><b>{x}</b></div>)}</div><div className="event-log"><div><time>9:42 AM</time><p>Bank sends: <b>₹850 debited at Swiggy.</b></p></div><div><time>9:42 AM</time><p>PFinanc creates a candidate: <b>Expense · Swiggy · ₹850</b></p></div><div><time>9:43 AM</time><p>You approve. <b>Ledger, cash flow and analytics update.</b></p></div></div></section>
 
     <Roadmap />
     <Audience />
     <FAQ />
-    <section className="final-cta"><div><Label>OPEN SOURCE · PRIVACY FIRST</Label><h2>Stop manually tracking your money.</h2><p>Turn the financial data you already generate into a structured system—automatically where possible, transparently where it matters.</p><div className="hero-actions"><Action>Get Started <ArrowRight size={17}/></Action><Action secondary>Explore GitHub ↗</Action></div></div></section>
+    <section className="final-cta"><div><Label>OPEN SOURCE · PRIVACY FIRST</Label><h2>Stop manually tracking your money.</h2><p>Turn the financial data you already generate into a structured system—automatically where possible, transparently where it matters.</p><div className="hero-actions"><Action onClick={() => trackClick("Final CTA - Get Started")}>Get Started <ArrowRight size={17}/></Action><Action secondary onClick={() => trackClick("Final CTA - Explore")}>Explore GitHub ↗</Action></div></div></section>
     <Footer />
-    <a className="sticky-cta" href={github} target="_blank" rel="noreferrer">Try PFinanc <ArrowRight size={15}/></a>
+    <a className="sticky-cta" href={github} target="_blank" rel="noreferrer" onClick={() => trackClick("Sticky Try PFinanc")}>Try PFinanc <ArrowRight size={15}/></a>
   </main>;
 }
 
@@ -178,5 +188,5 @@ function Footer() {
   "LinkedIn": "https://www.linkedin.com/in/mitesh-vasoya"
  };
 
- return <footer><div className="footer-main"><div className="footer-brand"><a href="#top" className="logo"><i/>PFinanc</a><p>Your finances, without the manual work.</p><div style={{marginTop:"1rem"}}><small>Built by Mitesh Vasoya</small></div></div>{[["Product",["Features","Investments","Family Finance","Privacy","Roadmap"]],["Developers",["GitHub","Documentation","Architecture","Contributing","Self-hosting"]],["Connect",["X","LinkedIn","Portfolio","GitHub"]],["Legal",["Privacy","Terms","Security"]]].map(([title,links])=><div className="footer-col" key={String(title)}><b>{String(title)}</b>{(links as string[]).map(x=><a key={x} href={title === "Connect" ? connectLinks[x] : (x==="GitHub"?github:"#top")} target={title === "Connect" ? "_blank" : undefined} rel={title === "Connect" ? "noreferrer" : undefined}>{x}</a>)}</div>)}</div><div className="footer-bottom"><span>© 2026 PFinanc. Open-source personal finance.</span><span>Built for individuals, families and developers.</span></div></footer>;
+ return <footer><div className="footer-main"><div className="footer-brand"><a href="#top" className="logo"><i/>PFinanc</a><p>Your finances, without the manual work.</p><div style={{marginTop:"1rem"}}><small>Built by Mitesh Vasoya</small></div></div>{[["Product",["Features","Investments","Family Finance","Privacy","Roadmap"]],["Developers",["GitHub","Documentation","Architecture","Contributing","Self-hosting"]],["Connect",["X","LinkedIn","Portfolio","GitHub"]],["Legal",["Privacy","Terms","Security"]]].map(([title,links])=><div className="footer-col" key={String(title)}><b>{String(title)}</b>{(links as string[]).map(x=><a key={x} href={title === "Connect" ? connectLinks[x] : (x==="GitHub"?github:"#top")} target={title === "Connect" ? "_blank" : undefined} rel={title === "Connect" ? "noreferrer" : undefined} onClick={() => trackClick(`Footer ${title} - ${x}`)}>{x}</a>)}</div>)}</div><div className="footer-bottom"><span>© 2026 PFinanc. Open-source personal finance.</span><span>Built for individuals, families and developers.</span></div></footer>;
 }
