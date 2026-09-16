@@ -42,9 +42,9 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: "PFinanc — Your finances, without the manual work" },
       { property: "og:description", content: "A privacy-first financial operating system for individuals and families." },
       { property: "og:type", content: "website" },
-      { property: "og:image", content: "/og-image.png" },
+      { property: "og:image", content: "https://pfinanc.vercel.app/og-image.png" }, // IMPORTANT: Change this to your actual production domain!
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:image", content: "/og-image.png" },
+      { name: "twitter:image", content: "https://pfinanc.vercel.app/og-image.png" }, // IMPORTANT: Change this to your actual production domain!
     ],
   }),
   component: Index,
