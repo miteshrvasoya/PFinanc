@@ -7,7 +7,7 @@ import { Header } from './Header';
 import { LoginView } from '../auth/LoginView';
 import { FirstInstallSetup } from '../auth/FirstInstallSetup';
 import { OnboardingWizard } from '../onboarding/OnboardingWizard';
-import { RefreshCw, LayoutDashboard, Receipt, TrendingUp, Wallet, User } from 'lucide-react';
+import { RefreshCw, LayoutDashboard, Receipt, TrendingUp, Wallet, Plus, X, ArrowDownRight, ArrowUpRight, ArrowLeftRight, FileSpreadsheet } from 'lucide-react';
 import Link from 'next/link';
 
 interface AppLayoutProps {
@@ -19,7 +19,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
   const [isFirstInstall, setIsFirstInstall] = useState(false);
   const [checkingSystem, setCheckingSystem] = useState(true);
+
+  // Onboarding state
   const [showOnboarding, setShowOnboarding] = useState(false);
+  
+  // Quick Action Modal state
+  const [showQuickAction, setShowQuickAction] = useState(false);
 
   useEffect(() => {
     checkSystem();
@@ -96,16 +101,16 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   
   const bottomNavItems = [
     { id: 'dashboard', href: '/', icon: <LayoutDashboard className="w-6 h-6" />, label: 'Home' },
-    { id: 'transactions', href: '/transactions', icon: <Receipt className="w-6 h-6" />, label: 'Txns' },
+    { id: 'transactions', href: '/transactions', icon: <Receipt className="w-6 h-6" />, label: 'Transactions' },
+    { id: 'quick', href: '#', icon: <Plus className="w-6 h-6 text-white" />, label: 'Add', isAction: true },
     { id: 'investments', href: '/investments', icon: <TrendingUp className="w-6 h-6" />, label: 'Invest' },
     { id: 'accounts', href: '/accounts', icon: <Wallet className="w-6 h-6" />, label: 'Accounts' },
-    { id: 'family', href: '/family', icon: <User className="w-6 h-6" />, label: 'Family' },
   ];
 
   return (
     <div className="flex h-screen bg-[#090d16] text-slate-100 overflow-hidden relative">
       {/* Sidebar */}
-      <Sidebar />
+      <Sidebar onQuickAction={() => setShowQuickAction(true)} />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden pb-16 md:pb-0">
@@ -114,27 +119,80 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
         {/* Dynamic Scrollable Page Content */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-7xl w-full mx-auto">
-          {children}
+          {React.Children.map(children, child => {
+            if (React.isValidElement(child)) {
+              return React.cloneElement(child, {
+                onQuickAction: () => setShowQuickAction(true)
+              } as any);
+            }
+            return child;
+          })}
         </main>
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[#090d16]/85 backdrop-blur-xl border-t border-slate-800/60 px-2 py-2 flex items-center justify-between z-40 shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.5)]">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[#0d1322]/95 backdrop-blur-md border-t border-slate-800/80 px-2 py-2 flex items-center justify-between z-40">
         {bottomNavItems.map((item) => {
+          if (item.isAction) {
+            return (
+              <button
+                key={item.id}
+                onClick={() => setShowQuickAction(true)}
+                className="flex flex-col items-center justify-center flex-1 -mt-5"
+              >
+                <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center shadow-lg shadow-indigo-600/30 border-4 border-[#090d16]">
+                  {item.icon}
+                </div>
+                <span className="text-[10px] font-medium text-slate-300 mt-1">{item.label}</span>
+              </button>
+            );
+          }
+          
           const isActive = router.pathname === item.href;
           return (
-            <Link key={item.id} href={item.href} className={`flex flex-col items-center justify-center flex-1 transition-all duration-300 relative ${isActive ? 'text-indigo-400' : 'text-slate-500 hover:text-slate-300'}`}>
-              {isActive && (
-                <div className="absolute -top-2 w-8 h-1 bg-indigo-500 rounded-b-full shadow-[0_0_10px_rgba(99,102,241,0.8)]" />
-              )}
-              <div className={`p-1.5 transition-transform duration-300 ${isActive ? '-translate-y-1 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : 'active:scale-90'}`}>
-                {item.icon}
-              </div>
-              <span className={`text-[10px] uppercase tracking-wider font-bold mt-0.5 transition-opacity duration-300 ${isActive ? 'opacity-100' : 'opacity-70'}`}>{item.label}</span>
+            <Link key={item.id} href={item.href} className={`flex flex-col items-center justify-center flex-1 transition-colors ${isActive ? 'text-indigo-400' : 'text-slate-400 hover:text-slate-200'}`}>
+              <div className="p-1">{item.icon}</div>
+              <span className="text-[10px] font-medium mt-0.5">{item.label}</span>
             </Link>
           );
         })}
       </div>
+      
+      {/* Global Quick Action Modal */}
+      {showQuickAction && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800">
+              <h3 className="font-bold text-lg text-white">Quick Action</h3>
+              <button onClick={() => setShowQuickAction(false)} className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-4 grid grid-cols-2 gap-3">
+              <button onClick={() => { setShowQuickAction(false); router.push('/transactions?action=add_expense'); }} className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl bg-slate-800/50 hover:bg-rose-500/10 border border-slate-700/50 hover:border-rose-500/30 transition-all text-rose-400">
+                <ArrowDownRight className="w-6 h-6" />
+                <span className="text-sm font-semibold text-slate-200">Expense</span>
+              </button>
+              
+              <button onClick={() => { setShowQuickAction(false); router.push('/transactions?action=add_income'); }} className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl bg-slate-800/50 hover:bg-emerald-500/10 border border-slate-700/50 hover:border-emerald-500/30 transition-all text-emerald-400">
+                <ArrowUpRight className="w-6 h-6" />
+                <span className="text-sm font-semibold text-slate-200">Income</span>
+              </button>
+              
+              <button onClick={() => { setShowQuickAction(false); router.push('/transfers?action=new'); }} className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl bg-slate-800/50 hover:bg-indigo-500/10 border border-slate-700/50 hover:border-indigo-500/30 transition-all text-indigo-400">
+                <ArrowLeftRight className="w-6 h-6" />
+                <span className="text-sm font-semibold text-slate-200">Transfer</span>
+              </button>
+              
+              <button onClick={() => { setShowQuickAction(false); router.push('/imports'); }} className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl bg-slate-800/50 hover:bg-sky-500/10 border border-slate-700/50 hover:border-sky-500/30 transition-all text-sky-400">
+                <FileSpreadsheet className="w-6 h-6" />
+                <span className="text-sm font-semibold text-slate-200">Import CSV</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

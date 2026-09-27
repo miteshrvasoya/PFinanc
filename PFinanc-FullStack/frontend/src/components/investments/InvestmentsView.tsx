@@ -21,7 +21,7 @@ import {
   Search,
 } from 'lucide-react';
 
-export type InvestmentSubTab = 'overview' | 'portfolio' | 'stocks' | 'mutual_funds' | 'other_assets' | 'transactions';
+export type InvestmentSubTab = 'overview' | 'holdings' | 'fixed_deposits' | 'retirement' | 'transactions';
 
 export const InvestmentsView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<InvestmentSubTab>('overview');
@@ -103,7 +103,7 @@ export const InvestmentsView: React.FC = () => {
       {/* Header & Subnavigation */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-800/80">
         <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">Investments</h2>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Investment & Portfolio Manager</h2>
           <p className="text-xs text-slate-400">
             Real-time multi-asset positions, FIFO tax lot returns, and retirement wealth
           </p>
@@ -113,30 +113,29 @@ export const InvestmentsView: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowImportModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-slate-600 text-xs text-slate-300 font-semibold transition-all hover:bg-slate-800"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-slate-600 text-xs text-slate-300 font-semibold transition-all"
           >
             <UploadCloud className="w-4 h-4 text-indigo-400" />
             <span className="hidden sm:inline">Import Statement</span>
           </button>
           <button
             onClick={() => handleOpenTradeModal('BUY')}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-xs text-white font-bold shadow-lg shadow-indigo-500/25 transition-all transform hover:-translate-y-0.5"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs text-white font-bold shadow-md shadow-indigo-500/20 transition-all"
           >
             <Plus className="w-4 h-4" />
-            <span>Add Investment</span>
+            <span>Record Trade</span>
           </button>
         </div>
       </div>
 
       {/* Subnavigation Bar */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-800/60 text-xs font-semibold no-scrollbar">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-800/60 text-xs font-semibold">
         {[
-          { id: 'overview', label: 'Overview', icon: PieChart },
-          { id: 'portfolio', label: 'Portfolio', icon: Layers },
-          { id: 'stocks', label: 'Stocks', icon: TrendingUp },
-          { id: 'mutual_funds', label: 'Mutual Funds', icon: ShieldCheck },
-          { id: 'other_assets', label: 'Other Assets', icon: Building },
-          { id: 'transactions', label: 'Investment Transactions', icon: History },
+          { id: 'overview', label: 'Portfolio Overview', icon: PieChart },
+          { id: 'holdings', label: `Holdings (${holdings.length})`, icon: Layers },
+          { id: 'fixed_deposits', label: 'Fixed Deposits', icon: Building },
+          { id: 'retirement', label: 'Retirement (EPF/PPF)', icon: ShieldCheck },
+          { id: 'transactions', label: 'Trade History', icon: History },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -175,25 +174,20 @@ export const InvestmentsView: React.FC = () => {
             />
           )}
 
-          {(activeTab === 'portfolio' || activeTab === 'stocks' || activeTab === 'mutual_funds') && (
-            <div className="animate-in fade-in duration-500">
-              <HoldingsTable
-                holdings={holdings}
-                onSelectSecurity={setSelectedHoldingDetail}
-                onRecordTrade={(sec) => handleOpenTradeModal('BUY', sec)}
-              />
-            </div>
+          {activeTab === 'holdings' && (
+            <HoldingsTable
+              holdings={holdings}
+              onSelectSecurity={setSelectedHoldingDetail}
+              onRecordTrade={(sec) => handleOpenTradeModal('BUY', sec)}
+            />
           )}
 
-          {activeTab === 'other_assets' && (
-            <div className="space-y-6 animate-in fade-in duration-500">
-              <FixedDepositsSection />
-              <RetirementSection />
-            </div>
-          )}
+          {activeTab === 'fixed_deposits' && <FixedDepositsSection />}
+
+          {activeTab === 'retirement' && <RetirementSection />}
 
           {activeTab === 'transactions' && (
-            <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden shadow-xl animate-in fade-in duration-500">
+            <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
               <div className="p-4 border-b border-slate-800 flex items-center justify-between">
                 <h4 className="font-bold text-white text-xs">Complete Trade & Ledger Log</h4>
                 <button

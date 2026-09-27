@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
 import { formatINR, formatDate } from '../../lib/formatters';
@@ -19,11 +18,11 @@ import {
 } from 'lucide-react';
 
 interface DashboardViewProps {
+  onQuickAction?: () => void;
   onNavigateToTab: (tab: any) => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToTab }) => {
-  const router = useRouter();
   const { currentHousehold, viewMode } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -91,36 +90,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToTab })
           </div>
         </div>
       )}
-
-      {/* Quick Actions */}
-      <div className="glass-panel rounded-2xl p-5 border border-slate-800">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-sm text-white flex items-center gap-2">
-            Quick Actions
-          </h3>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <button onClick={() => router.push('/transactions?action=add_expense')} className="flex flex-col items-center justify-center gap-2 p-3 rounded-xl bg-slate-900/50 hover:bg-rose-500/10 border border-slate-700/50 hover:border-rose-500/30 transition-all text-rose-400 group">
-            <ArrowDownRight className="w-5 h-5 transition-transform group-hover:scale-110" />
-            <span className="text-xs font-semibold text-slate-200 group-hover:text-white">Expense</span>
-          </button>
-          
-          <button onClick={() => router.push('/transactions?action=add_income')} className="flex flex-col items-center justify-center gap-2 p-3 rounded-xl bg-slate-900/50 hover:bg-emerald-500/10 border border-slate-700/50 hover:border-emerald-500/30 transition-all text-emerald-400 group">
-            <ArrowUpRight className="w-5 h-5 transition-transform group-hover:scale-110" />
-            <span className="text-xs font-semibold text-slate-200 group-hover:text-white">Income</span>
-          </button>
-          
-          <button onClick={() => router.push('/accounts?action=add_transfer')} className="flex flex-col items-center justify-center gap-2 p-3 rounded-xl bg-slate-900/50 hover:bg-indigo-500/10 border border-slate-700/50 hover:border-indigo-500/30 transition-all text-indigo-400 group">
-            <ArrowLeftRight className="w-5 h-5 transition-transform group-hover:scale-110" />
-            <span className="text-xs font-semibold text-slate-200 group-hover:text-white">Transfer</span>
-          </button>
-          
-          <button onClick={() => router.push('/investments')} className="flex flex-col items-center justify-center gap-2 p-3 rounded-xl bg-slate-900/50 hover:bg-sky-500/10 border border-slate-700/50 hover:border-sky-500/30 transition-all text-sky-400 group">
-            <TrendingUp className="w-5 h-5 transition-transform group-hover:scale-110" />
-            <span className="text-xs font-semibold text-slate-200 group-hover:text-white">Investment</span>
-          </button>
-        </div>
-      </div>
 
       {/* Financial Summary */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
