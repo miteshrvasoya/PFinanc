@@ -7,6 +7,7 @@ interface Filter {
   key: string;
   label: string;
   icon?: string;
+  badge?: number;
 }
 
 interface FilterBarProps {
@@ -17,10 +18,10 @@ interface FilterBarProps {
 
 const TYPE_FILTERS: Filter[] = [
   { key: 'all', label: 'All' },
-  { key: 'NEEDS_REVIEW', label: 'Needs Review', icon: 'alert-circle-outline' },
-  { key: 'EXPENSE', label: 'Expenses', icon: 'arrow-up-circle' },
-  { key: 'INCOME', label: 'Income', icon: 'arrow-down-circle' },
-  { key: 'TRANSFER', label: 'Transfers', icon: 'swap-horizontal-circle' },
+  { key: 'NEEDS_REVIEW', label: 'Needs Review' },
+  { key: 'EXPENSE', label: 'Expenses' },
+  { key: 'INCOME', label: 'Income' },
+  { key: 'TRANSFER', label: 'Transfers' },
 ];
 
 export { TYPE_FILTERS };
@@ -49,6 +50,13 @@ export function FilterBar({ filters, selectedKey, onSelect }: FilterBarProps) {
               />
             )}
             <Text style={[styles.label, active && styles.labelActive]}>{f.label}</Text>
+            {f.badge !== undefined && f.badge > 0 && (
+              <View style={[styles.badge, active && styles.badgeActive]}>
+                <Text style={[styles.badgeText, active && styles.badgeTextActive]}>
+                  {f.badge}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
         );
       })}
@@ -82,4 +90,14 @@ const styles = StyleSheet.create({
     color: Colors.onSurfaceMuted,
   },
   labelActive: { color: Colors.onPrimary },
+  badge: {
+    backgroundColor: Colors.surfaceVariant,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 4,
+  },
+  badgeActive: { backgroundColor: 'rgba(255,255,255,0.2)' },
+  badgeText: { ...Typography.labelSm, color: Colors.onSurface },
+  badgeTextActive: { color: Colors.onPrimary },
 });

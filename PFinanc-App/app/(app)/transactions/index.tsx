@@ -7,12 +7,12 @@ import {
   RefreshControl,
   TouchableOpacity,
   TextInput,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { transactionsApi } from '../../../src/api/transactions';
+import apiClient from '../../../src/api/client';
 import { TransactionRow, Transaction } from '../../../src/components/transactions/TransactionRow';
 import { FilterBar, TYPE_FILTERS } from '../../../src/components/transactions/FilterBar';
 import { SkeletonRow } from '../../../src/components/ui/Skeleton';
@@ -25,7 +25,7 @@ const PAGE_SIZE = 25;
 
 interface Section {
   title: string;
-  data: Transaction[];
+  data: any[];
 }
 
 export default function TransactionsScreen() {
@@ -33,21 +33,22 @@ export default function TransactionsScreen() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // 1. Fetch transactions
   const {
-    data,
+    data: txData,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-    isLoading,
-    refetch,
-    isRefetching,
+    isLoading: txLoading,
+    refetch: refetchTx,
+    isRefetching: isRefetchingTx,
   } = useInfiniteQuery({
     queryKey: ['transactions', typeFilter],
     queryFn: ({ pageParam = 1 }) =>
       transactionsApi.getAll({
         page: pageParam,
         limit: PAGE_SIZE,
-        ...(typeFilter !== 'all' ? { type: typeFilter } : {}),
+        ...(typeFilter !== 'all' && typeFilter !== 'NEEDS_REVIEW' ? { type: typeFilter } : {}),
       }),
     getNextPageParam: (lastPage, allPages) => {
       const total = lastPage?.data?.pagination?.total ?? 0;
@@ -55,18 +56,49 @@ export default function TransactionsScreen() {
       return fetched < total ? allPages.length + 1 : undefined;
     },
     initialPageParam: 1,
+    enabled: typeFilter !== 'NEEDS_REVIEW',
   });
 
-  const allTxs: Transaction[] = useMemo(() => {
-    return (data?.pages ?? []).flatMap(p => p?.data?.transactions ?? []);
-  }, [data]);
+  // 2. Fetch automation candidates
+  const { 
+    data: candidatesRes, 
+    isLoading: candidatesLoading,
+    refetch: refetchCandidates,
+    isRefetching: isRefetchingCandidates,
+  } = useQuery({
+    queryKey: ['automation-candidates'],
+    queryFn: async () => {
+      const res = await apiClient.get('/automation/candidates');
+      return res.data;
+    },
+  });
 
-  // Group transactions by relative date (e.g., Today, Yesterday, 12 Oct)
+  const candidates = candidatesRes ?? [];
+  const candidatesCount = candidates.length;
+
+  // 3. Inject candidates count into FilterBar tabs
+  const filtersWithBadge = useMemo(() => {
+    return TYPE_FILTERS.map(f => {
+      if (f.key === 'NEEDS_REVIEW') return { ...f, badge: candidatesCount };
+      return f;
+    });
+  }, [candidatesCount]);
+
+  // 4. Build data lists
+  const allTxs: Transaction[] = useMemo(() => {
+    if (typeFilter === 'NEEDS_REVIEW') return [];
+    return (txData?.pages ?? []).flatMap(p => p?.data?.transactions ?? []);
+  }, [txData, typeFilter]);
+
   const sections: Section[] = useMemo(() => {
+    if (typeFilter === 'NEEDS_REVIEW') {
+      return [{ title: 'Pending Review', data: candidates }];
+    }
+
     let filteredTxs = allTxs;
     if (searchQuery.trim()) {
       const lowerQ = searchQuery.toLowerCase();
-      filteredTxs = filteredTxs.filter(tx =>
+      filteredTxs = filteredTxs.filter(tx => 
         tx.description.toLowerCase().includes(lowerQ) ||
         tx.category_name?.toLowerCase().includes(lowerQ) ||
         tx.account_name?.toLowerCase().includes(lowerQ)
@@ -81,18 +113,51 @@ export default function TransactionsScreen() {
     }, {} as Record<string, Transaction[]>);
 
     return Object.entries(grouped).map(([title, data]) => ({ title, data }));
-  }, [allTxs, searchQuery]);
+  }, [allTxs, searchQuery, typeFilter, candidates]);
 
+  const isLoading = typeFilter === 'NEEDS_REVIEW' ? candidatesLoading : txLoading;
+  const isRefetching = typeFilter === 'NEEDS_REVIEW' ? isRefetchingCandidates : isRefetchingTx;
+  const refetch = typeFilter === 'NEEDS_REVIEW' ? refetchCandidates : refetchTx;
+
+  // Renderers
   const renderItem = useCallback(
-    ({ item, index }: { item: Transaction; index: number }) => (
-      <Animated.View entering={FadeInDown.delay(index * 30).duration(300)}>
-        <TransactionRow
-          transaction={item}
-          onPress={() => router.push(`/(app)/transactions/${item.id}`)}
-        />
-      </Animated.View>
-    ),
-    [router]
+    ({ item, index }: { item: any; index: number }) => {
+      if (typeFilter === 'NEEDS_REVIEW') {
+        const isCredit = item.direction === 'CREDIT';
+        return (
+          <Animated.View entering={FadeInDown.delay(index * 30).duration(300)}>
+            <TouchableOpacity 
+              style={styles.candidateCard}
+              onPress={() => router.push({ pathname: '/(app)/automation/review', params: { id: item.id } })}
+              activeOpacity={0.7}
+            >
+              <View style={styles.candidateHeader}>
+                <Text style={styles.candidateMerchant}>{item.merchant || 'Unknown Merchant'}</Text>
+                <Text style={[styles.candidateAmount, { color: isCredit ? Colors.success : Colors.danger }]}>
+                  {isCredit ? '+' : '-'}₹{item.amount}
+                </Text>
+              </View>
+              <Text style={styles.candidateDetails}>
+                {formatRelativeDate(item.transaction_date)} • {item.confidence * 100}% Confidence • Detected from SMS
+              </Text>
+              <View style={styles.statusBadge}>
+                <Text style={styles.statusText}>Review Needed</Text>
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
+        );
+      }
+
+      return (
+        <Animated.View entering={FadeInDown.delay(index * 30).duration(300)}>
+          <TransactionRow
+            transaction={item as Transaction}
+            onPress={() => router.push(`/(app)/transactions/${item.id}`)}
+          />
+        </Animated.View>
+      );
+    },
+    [router, typeFilter]
   );
 
   const renderSectionHeader = ({ section: { title } }: { section: Section }) => (
@@ -112,19 +177,37 @@ export default function TransactionsScreen() {
         {[1, 2, 3, 4, 5].map(i => <SkeletonRow key={i} />)}
       </View>
     );
+    
+    let emptyMsg = 'No transactions found';
+    let emptySubMsg = '';
+    let iconName: any = 'text-box-search-outline';
+
+    if (typeFilter === 'NEEDS_REVIEW') {
+      emptyMsg = "You're all caught up";
+      emptySubMsg = 'No transactions need review.';
+      iconName = 'check-decagram-outline';
+    } else if (searchQuery) {
+      emptyMsg = 'No results found';
+      emptySubMsg = `We couldn't find anything matching "${searchQuery}"`;
+    } else if (typeFilter !== 'all') {
+      emptyMsg = `No ${typeFilter.toLowerCase()}s yet`;
+      emptySubMsg = `No ${typeFilter.toLowerCase()} transactions match your criteria.`;
+    } else {
+      emptyMsg = 'No transactions yet';
+      emptySubMsg = 'Add your first transaction using the + button.';
+    }
+
     return (
       <View style={styles.emptyBox}>
-        <View style={styles.emptyIconBg}>
-          <MaterialCommunityIcons name="text-box-search-outline" size={48} color={Colors.onSurfaceSubtle} />
+        <View style={[styles.emptyIconBg, typeFilter === 'NEEDS_REVIEW' && { backgroundColor: Colors.successBg }]}>
+          <MaterialCommunityIcons 
+            name={iconName} 
+            size={48} 
+            color={typeFilter === 'NEEDS_REVIEW' ? Colors.success : Colors.onSurfaceSubtle} 
+          />
         </View>
-        <Text style={styles.emptyTitle}>No transactions found</Text>
-        <Text style={styles.emptySubText}>
-          {searchQuery
-            ? `We couldn't find anything matching "${searchQuery}"`
-            : typeFilter !== 'all'
-              ? `No ${typeFilter.toLowerCase().replace('_', ' ')} transactions match your criteria.`
-              : 'Add your first transaction using the + button.'}
-        </Text>
+        <Text style={styles.emptyTitle}>{emptyMsg}</Text>
+        <Text style={styles.emptySubText}>{emptySubMsg}</Text>
       </View>
     );
   };
@@ -155,8 +238,8 @@ export default function TransactionsScreen() {
         </View>
       </View>
 
-      {/* Filter Bar */}
-      <FilterBar filters={TYPE_FILTERS} selectedKey={typeFilter} onSelect={setTypeFilter} />
+      {/* Filter Bar with Needs Review Badge */}
+      <FilterBar filters={filtersWithBadge} selectedKey={typeFilter} onSelect={setTypeFilter} />
 
       {/* Transaction List */}
       <SectionList
@@ -166,7 +249,7 @@ export default function TransactionsScreen() {
         keyExtractor={(item) => item.id}
         ListEmptyComponent={renderEmpty}
         ListFooterComponent={renderFooter}
-        onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
+        onEndReached={() => typeFilter !== 'NEEDS_REVIEW' && hasNextPage && !isFetchingNextPage && fetchNextPage()}
         onEndReachedThreshold={0.3}
         refreshControl={
           <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={Colors.primary} />
@@ -251,12 +334,35 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: Colors.border,
-    shadowColor: Colors.shadowColor,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 10,
-    elevation: 4,
   },
   emptyTitle: { ...Typography.headlineSm, color: Colors.onSurface, fontFamily: 'Inter_600SemiBold' },
   emptySubText: { ...Typography.bodyMd, color: Colors.onSurfaceMuted, textAlign: 'center', lineHeight: 22 },
+  
+  // Needs Review Cards
+  candidateCard: {
+    backgroundColor: Colors.surface,
+    marginHorizontal: Spacing.layoutMargin,
+    marginBottom: Spacing.md,
+    padding: Spacing.base,
+    borderRadius: Spacing.cardRadius,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: Colors.shadowColor,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  candidateHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  candidateMerchant: { ...Typography.bodyMd, fontFamily: 'Inter_600SemiBold', color: Colors.onSurface },
+  candidateAmount: { ...Typography.numericData, fontVariant: ['tabular-nums'] },
+  candidateDetails: { ...Typography.labelSm, color: Colors.onSurfaceMuted, marginBottom: 12 },
+  statusBadge: { 
+    alignSelf: 'flex-start', 
+    backgroundColor: Colors.warningBg, 
+    paddingHorizontal: 10, 
+    paddingVertical: 4, 
+    borderRadius: 12 
+  },
+  statusText: { color: Colors.warning, ...Typography.labelSm, fontFamily: 'Inter_600SemiBold' },
 });
