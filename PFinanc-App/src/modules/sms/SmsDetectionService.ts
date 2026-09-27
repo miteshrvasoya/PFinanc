@@ -7,7 +7,7 @@ export class SmsDetectionService {
     private static isInitialized = false;
     private static emitter: NativeEventEmitter | null = null;
 
-    static initialize() {
+    static async initialize() {
         if (this.isInitialized || Platform.OS !== 'android') return;
 
         const { SmsModule } = NativeModules;
@@ -17,32 +17,49 @@ export class SmsDetectionService {
         }
 
         this.emitter = new NativeEventEmitter(SmsModule);
-        
+
         this.emitter.addListener('onSmsReceived', (event: RawSmsEvent) => {
             console.log('Received SMS from JS side:', event.sender);
-            
+
             // Basic pre-filter (ignore obvious non-financial senders like 5 digit shortcodes for general spam if desired)
             // But we let backend do the heavy lifting
-            
+
             // Push to local queue
             useSmsCandidateRepository.getState().addCandidate(event);
-            
+
             // Attempt sync
             this.syncQueue();
         });
 
         this.isInitialized = true;
+
+        // Fetch offline messages
+        try {
+            const offlineJson = await SmsModule.getOfflineMessages();
+            if (offlineJson) {
+                const offlineMessages: RawSmsEvent[] = JSON.parse(offlineJson);
+                if (offlineMessages.length > 0) {
+                    console.log(`Recovered ${offlineMessages.length} offline messages`);
+                    offlineMessages.forEach(msg => {
+                        useSmsCandidateRepository.getState().addCandidate(msg);
+                    });
+                    this.syncQueue();
+                }
+            }
+        } catch (e) {
+            console.error('Failed to fetch offline SMS messages', e);
+        }
     }
 
     static async syncQueue() {
         const repo = useSmsCandidateRepository.getState();
         const pending = repo.queue.filter(c => c.status === 'PENDING_SYNC' || c.status === 'FAILED');
-        
+
         if (pending.length === 0) return;
 
         try {
             const deviceId = await SmsPermissionService.getDeviceId();
-            
+
             const payload = pending.map(c => ({
                 messageHash: c.messageHash,
                 sender: c.sender,

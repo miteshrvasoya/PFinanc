@@ -35,13 +35,13 @@ export class AutomationService {
         }).then(res => res.id).catch(() => null); // Ignore unique constraint violation if already processed
 
         if (!eventId) {
-            results.push({ messageHash: raw.messageHash, status: 'DUPLICATE_EVENT' });
-            continue;
+          results.push({ messageHash: raw.messageHash, status: 'DUPLICATE_EVENT' });
+          continue;
         }
 
         // 2. Parse
         let parsed: ParsedTransaction | null = await DeterministicTransactionParser.parse(raw.body, raw.sender, new Date(raw.receivedAt), householdId);
-        
+
         if (parsed.isFinancial && parsed.confidence < settings.confidence_threshold && settings.ai_enabled) {
           const aiParsed = await AITransactionParser.parse(raw.body, raw.sender, new Date(raw.receivedAt));
           if (aiParsed) parsed = aiParsed;
@@ -57,25 +57,60 @@ export class AutomationService {
         let categoryId = null;
         let categoryConfidence = 0;
         if (parsed.merchant) {
-           const classResult = await ClassificationService.classify(householdId, parsed.merchant, parsed.amount || 0);
-           categoryId = classResult.categoryId;
-           categoryConfidence = classResult.confidence === 'USER_RULE' ? 1.0 : 0.8;
+          const classResult = await ClassificationService.classify(householdId, parsed.merchant, parsed.amount || 0);
+          categoryId = classResult.categoryId;
+          categoryConfidence = classResult.confidence === 'USER_RULE' ? 1.0 : 0.8;
         }
 
         // Basic account matching based on suffix
         let accountId = null;
         if (parsed.accountSuffix) {
-            const acc = await QueryHelper.queryOne<{ id: string }>(
-                `SELECT id FROM accounts WHERE household_id = $1 AND name ILIKE $2 LIMIT 1`,
-                [householdId, `%${parsed.accountSuffix}%`]
-            );
-            if (acc) accountId = acc.id;
+          const acc = await QueryHelper.queryOne<{ id: string }>(
+            `SELECT id FROM accounts WHERE household_id = $1 AND name ILIKE $2 LIMIT 1`,
+            [householdId, `%${parsed.accountSuffix}%`]
+          );
+          if (acc) accountId = acc.id;
         }
 
-        // 4. Candidate Creation
+        // 4. Deduplication Check
+        let isDuplicate = false;
+        if (parsed.amount && parsed.transactionDate) {
+          const dateStr = parsed.transactionDate.toISOString().split('T')[0];
+
+          // Base query conditions
+          let txQuery = `SELECT id FROM transactions WHERE household_id = $1 AND amount = $2 AND transaction_date = $3 AND transaction_type = $4`;
+          let candQuery = `SELECT id FROM transaction_candidates WHERE household_id = $1 AND amount = $2 AND transaction_date = $3 AND transaction_type = $4 AND status IN ('NEEDS_REVIEW', 'APPROVED')`;
+          const queryParams: any[] = [householdId, parsed.amount, dateStr, parsed.transactionType];
+
+          if (accountId) {
+            txQuery += ` AND account_id = $5`;
+            candQuery += ` AND account_id = $5`;
+            queryParams.push(accountId);
+          }
+
+          const existingTx = await QueryHelper.queryOne<{ id: string }>(txQuery + ` LIMIT 1`, queryParams);
+
+          if (existingTx) {
+            isDuplicate = true;
+          } else {
+            const existingCandidate = await QueryHelper.queryOne<{ id: string }>(candQuery + ` LIMIT 1`, queryParams);
+            if (existingCandidate) isDuplicate = true;
+          }
+        }
+
+        if (isDuplicate) {
+          await QueryHelper.update('sms_ingestion_events', eventId, {
+            processing_status: 'IGNORED',
+            classification: 'DUPLICATE_TRANSACTION'
+          });
+          results.push({ messageHash: raw.messageHash, status: 'DUPLICATE_TRANSACTION' });
+          continue;
+        }
+
+        // 5. Candidate Creation
         let status = 'NEEDS_REVIEW';
         if (settings.approval_mode === 'AUTO_APPROVE_HIGH_CONFIDENCE' && parsed.confidence >= settings.confidence_threshold && accountId && parsed.amount) {
-           status = 'APPROVED';
+          status = 'APPROVED';
         }
 
         const candidate = await QueryHelper.insert('transaction_candidates', {
@@ -98,26 +133,26 @@ export class AutomationService {
           status: status
         });
 
-        await QueryHelper.update('sms_ingestion_events', eventId, { 
-            processing_status: 'CANDIDATE_CREATED', 
-            classification: 'FINANCIAL',
-            transaction_candidate_id: candidate.id 
+        await QueryHelper.update('sms_ingestion_events', eventId, {
+          processing_status: 'CANDIDATE_CREATED',
+          classification: 'FINANCIAL',
+          transaction_candidate_id: candidate.id
         });
 
         // 5. Auto-approval execution
         if (status === 'APPROVED') {
-            await TransactionsService.createTransaction(householdId, userId, {
-                account_id: accountId,
-                category_id: categoryId,
-                transaction_type: parsed.transactionType,
-                amount: parsed.amount,
-                currency: parsed.currency,
-                transaction_date: parsed.transactionDate?.toISOString().split('T')[0],
-                merchant_name: parsed.merchant,
-                source_type: 'SMS',
-                source_reference: raw.messageHash,
-                source_candidate_id: candidate.id
-            });
+          await TransactionsService.createTransaction(householdId, userId, {
+            account_id: accountId,
+            category_id: categoryId,
+            transaction_type: parsed.transactionType,
+            amount: parsed.amount,
+            currency: parsed.currency,
+            transaction_date: parsed.transactionDate?.toISOString().split('T')[0],
+            merchant_name: parsed.merchant,
+            source_type: 'SMS',
+            source_reference: raw.messageHash,
+            source_candidate_id: candidate.id
+          });
         }
 
         results.push({ messageHash: raw.messageHash, status: 'CANDIDATE_CREATED', candidateId: candidate.id });
@@ -131,42 +166,42 @@ export class AutomationService {
   }
 
   static async getCandidates(householdId: string) {
-      return QueryHelper.query(`SELECT * FROM transaction_candidates WHERE household_id = $1 AND status = 'NEEDS_REVIEW' ORDER BY created_at DESC`, [householdId]);
+    return QueryHelper.query(`SELECT * FROM transaction_candidates WHERE household_id = $1 AND status = 'NEEDS_REVIEW' ORDER BY created_at DESC`, [householdId]);
   }
 
   static async approveCandidate(id: string, householdId: string, userId: string, overrides: any) {
-      const candidate = await QueryHelper.queryOne(`SELECT * FROM transaction_candidates WHERE id = $1 AND household_id = $2`, [id, householdId]);
-      if (!candidate || candidate.status !== 'NEEDS_REVIEW') throw new Error('Candidate not found or not in review state');
+    const candidate = await QueryHelper.queryOne(`SELECT * FROM transaction_candidates WHERE id = $1 AND household_id = $2`, [id, householdId]);
+    if (!candidate || candidate.status !== 'NEEDS_REVIEW') throw new Error('Candidate not found or not in review state');
 
-      // Prevent duplicate approval
-      const exists = await QueryHelper.queryOne(`SELECT id FROM transactions WHERE source_candidate_id = $1`, [id]);
-      if (exists) {
-          await QueryHelper.update('transaction_candidates', id, { status: 'DUPLICATE' });
-          throw new Error('Candidate already processed');
-      }
+    // Prevent duplicate approval
+    const exists = await QueryHelper.queryOne(`SELECT id FROM transactions WHERE source_candidate_id = $1`, [id]);
+    if (exists) {
+      await QueryHelper.update('transaction_candidates', id, { status: 'DUPLICATE' });
+      throw new Error('Candidate already processed');
+    }
 
-      const txData = {
-          account_id: overrides.account_id || candidate.account_id,
-          category_id: overrides.category_id || candidate.category_suggestion,
-          transaction_type: overrides.transaction_type || candidate.transaction_type,
-          amount: overrides.amount || candidate.amount,
-          currency: overrides.currency || candidate.currency,
-          transaction_date: overrides.transaction_date || candidate.transaction_date,
-          merchant_name: overrides.merchant || candidate.merchant,
-          description: overrides.description || candidate.description,
-          source_type: 'SMS',
-          source_reference: candidate.source_reference,
-          source_candidate_id: id
-      };
+    const txData = {
+      account_id: overrides.account_id || candidate.account_id,
+      category_id: overrides.category_id || candidate.category_suggestion,
+      transaction_type: overrides.transaction_type || candidate.transaction_type,
+      amount: overrides.amount || candidate.amount,
+      currency: overrides.currency || candidate.currency,
+      transaction_date: overrides.transaction_date || candidate.transaction_date,
+      merchant_name: overrides.merchant || candidate.merchant,
+      description: overrides.description || candidate.description,
+      source_type: 'SMS',
+      source_reference: candidate.source_reference,
+      source_candidate_id: id
+    };
 
-      const transaction = await TransactionsService.createTransaction(householdId, userId, txData);
-      
-      await QueryHelper.update('transaction_candidates', id, { status: 'APPROVED' });
+    const transaction = await TransactionsService.createTransaction(householdId, userId, txData);
 
-      return transaction;
+    await QueryHelper.update('transaction_candidates', id, { status: 'APPROVED' });
+
+    return transaction;
   }
 
   static async rejectCandidate(id: string, householdId: string) {
-      return QueryHelper.update('transaction_candidates', id, { status: 'REJECTED' }, 'household_id = $1', [householdId]);
+    return QueryHelper.update('transaction_candidates', id, { status: 'REJECTED' }, 'household_id = $1', [householdId]);
   }
 }

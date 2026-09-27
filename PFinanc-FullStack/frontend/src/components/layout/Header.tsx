@@ -43,154 +43,189 @@ export const Header: React.FC = () => {
   ];
 
   return (
-    <header className="h-16 bg-[#0d1322]/80 backdrop-blur-md border-b border-slate-800/80 px-6 flex items-center justify-between z-10 sticky top-0">
-      {/* Left: Household selector & View Switcher */}
-      <div className="flex items-center gap-4">
-        {/* Household Dropdown */}
-        <div className="relative flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-sm">
-          <Home className="w-4 h-4 text-indigo-400" />
-          <span className="font-semibold text-white">{currentHousehold?.name || 'Vasoya Family'}</span>
-          <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-            {currentHousehold?.role || 'OWNER'}
-          </span>
-        </div>
+    <header className="h-[72px] bg-[#090d16]/80 backdrop-blur-xl border-b border-slate-800/60 px-6 flex items-center justify-between z-30 sticky top-0 transition-all duration-300">
+      {/* Dynamic Header Glow */}
+      <div className="absolute top-0 left-1/4 w-1/2 h-full bg-indigo-500/5 blur-3xl pointer-events-none" />
 
-        {/* View Toggle */}
-        <div className="flex items-center bg-slate-900/90 p-1 rounded-lg border border-slate-800 text-xs">
+      {/* Left: Household selector & View Switcher */}
+      <div className="flex items-center gap-6 relative z-10">
+        {/* Household Dropdown - Premium Glass Pill */}
+        <button className="group relative flex items-center gap-3 px-4 py-2 rounded-2xl bg-slate-900/40 border border-slate-700/50 hover:border-indigo-500/50 hover:bg-slate-800/60 transition-all duration-300 shadow-sm hover:shadow-[0_0_15px_-3px_rgba(99,102,241,0.2)]">
+          <div className="p-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 group-hover:bg-indigo-500 group-hover:text-white transition-colors duration-300">
+            <Home className="w-4 h-4" />
+          </div>
+          <div className="flex flex-col items-start leading-tight">
+            <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Household</span>
+            <span className="text-sm font-black text-white">{currentHousehold?.name || 'Vasoya Family'}</span>
+          </div>
+          <ChevronDown className="w-4 h-4 text-slate-500 group-hover:text-white transition-colors ml-2" />
+        </button>
+
+        {/* View Toggle - Animated Segmented Control */}
+        <div className="hidden md:flex items-center bg-slate-900/60 p-1 rounded-xl border border-slate-800/80 relative">
           <button
             onClick={() => setViewMode('household')}
-            className={`px-3 py-1 rounded-md font-medium transition-all ${
+            className={`relative z-10 px-4 py-1.5 rounded-lg font-bold text-xs transition-all duration-300 ${
               viewMode === 'household'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'text-white drop-shadow-md'
+                : 'text-slate-500 hover:text-slate-300'
             }`}
           >
-            Household View
+            Household
           </button>
           <button
             onClick={() => setViewMode('personal')}
-            className={`px-3 py-1 rounded-md font-medium transition-all ${
+            className={`relative z-10 px-4 py-1.5 rounded-lg font-bold text-xs transition-all duration-300 ${
               viewMode === 'personal'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'text-white drop-shadow-md'
+                : 'text-slate-500 hover:text-slate-300'
             }`}
           >
-            Personal View
+            Personal
           </button>
+          {/* Animated Background Indicator */}
+          <div
+            className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-indigo-600 rounded-lg shadow-[0_0_10px_rgba(99,102,241,0.4)] transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+              viewMode === 'household' ? 'left-1' : 'left-[calc(50%+2px)]'
+            }`}
+          />
         </div>
       </div>
 
-        {/* Notification Bell + User Card */}
-        <div className="flex items-center gap-3">
-          {/* AI Advisor Notification Bell */}
-          <div className="relative" ref={notifRef}>
-            <button
-              id="ai-advisor-notification-bell"
-              onClick={() => setShowNotifDropdown(!showNotifDropdown)}
-              className="relative p-2 rounded-lg text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
-              title="AI Advisor Notifications"
-            >
-              <Bell className="w-5 h-5" />
-              {notifications.length > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-indigo-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                  {notifications.length > 9 ? '9+' : notifications.length}
-                </span>
-              )}
-            </button>
+      {/* Right: Notifications + Demo + Profile */}
+      <div className="flex items-center gap-4 relative z-10">
+        
+        {/* Demo Switcher */}
+        <div className="hidden xl:flex items-center gap-1.5 bg-slate-900/40 p-1 rounded-xl border border-slate-800/60 text-xs">
+          <div className="flex items-center gap-1.5 px-3 border-r border-slate-700/50">
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Demo</span>
+          </div>
+          {demoUsers.map((du) => {
+            const isCurrent = user?.email === du.email;
+            return (
+              <button
+                key={du.email}
+                onClick={() => switchDemoUser(du.email)}
+                className={`px-3 py-1.5 rounded-lg text-xs transition-all duration-300 ${
+                  isCurrent
+                    ? 'bg-gradient-to-r from-amber-500/20 to-amber-600/20 text-amber-300 border border-amber-500/30 font-bold shadow-[0_0_10px_-2px_rgba(245,158,11,0.2)]'
+                    : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300 font-semibold border border-transparent'
+                }`}
+              >
+                {du.label.split(' ')[0]}
+              </button>
+            );
+          })}
+        </div>
 
-            {showNotifDropdown && (
-              <div className="absolute right-0 top-10 w-80 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <BotMessageSquare className="w-4 h-4 text-indigo-400" />
-                    <span className="text-sm font-semibold text-white">AI Advisor</span>
-                    {notifications.length > 0 && (
-                      <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                        {notifications.length} new
-                      </span>
-                    )}
-                  </div>
-                  {notifications.length > 0 && (
-                    <button onClick={handleMarkAllRead} className="text-xs text-slate-400 hover:text-indigo-400 transition-colors flex items-center gap-1">
-                      <CheckCheck className="w-3.5 h-3.5" />
-                      Mark all read
-                    </button>
-                  )}
-                </div>
-                <div className="max-h-72 overflow-y-auto divide-y divide-slate-800/60">
-                  {notifications.length === 0 ? (
-                    <div className="px-4 py-6 text-center text-slate-500 text-sm">
-                      <Bell className="w-6 h-6 mx-auto mb-2 opacity-40" />
-                      <p>No new notifications</p>
-                    </div>
-                  ) : (
-                    notifications.map((n: any) => (
-                      <Link
-                        key={n.id}
-                        href={n.report_id ? `/ai-advisor?report=${n.report_id}` : '/ai-advisor'}
-                        onClick={() => setShowNotifDropdown(false)}
-                        className="block px-4 py-3 hover:bg-slate-800/50 transition-colors"
-                      >
-                        <p className="text-xs font-semibold text-slate-200 leading-tight">{n.title}</p>
-                        <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{n.body}</p>
-                        <p className="text-[10px] text-slate-600 mt-1">{new Date(n.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</p>
-                      </Link>
-                    ))
-                  )}
-                </div>
-                <div className="px-4 py-2.5 border-t border-slate-800 text-center">
-                  <Link href="/ai-advisor" onClick={() => setShowNotifDropdown(false)} className="text-xs text-indigo-400 hover:text-indigo-300 font-medium">
-                    Open AI Advisor →
-                  </Link>
-                </div>
-              </div>
+        <div className="h-8 w-px bg-slate-800/80 mx-1 hidden lg:block" />
+
+        {/* AI Advisor Notification Bell */}
+        <div className="relative" ref={notifRef}>
+          <button
+            id="ai-advisor-notification-bell"
+            onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+            className={`relative p-2.5 rounded-xl transition-all duration-300 ${
+              showNotifDropdown ? 'bg-indigo-500/20 text-indigo-400 shadow-[0_0_15px_-3px_rgba(99,102,241,0.3)]' : 'bg-slate-900/50 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 border border-transparent hover:border-slate-700'
+            }`}
+            title="AI Advisor Notifications"
+          >
+            <Bell className={`w-5 h-5 ${notifications.length > 0 ? 'animate-[swing_2s_ease-in-out_infinite]' : ''}`} />
+            {notifications.length > 0 && (
+              <>
+                <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-rose-500 border-2 border-[#090d16] rounded-full z-10" />
+                <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping opacity-75" />
+              </>
             )}
-          </div>
+          </button>
 
-          {/* Demo Switcher */}
-          <div className="hidden lg:flex items-center gap-1.5 bg-slate-900/60 p-1 rounded-lg border border-slate-800/60 text-xs">
-            <div className="flex items-center gap-1 px-2 text-slate-400 font-medium text-[11px]">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Switch Role:</span>
-            </div>
-            {demoUsers.map((du) => {
-              const isCurrent = user?.email === du.email;
-              return (
-                <button
-                  key={du.email}
-                  onClick={() => switchDemoUser(du.email)}
-                  className={`px-2.5 py-1 rounded text-xs transition-all ${
-                    isCurrent
-                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/50 font-semibold'
-                      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                  }`}
-                >
-                  {du.label}
-                </button>
-              );
-            })}
-          </div>
+          <style jsx>{`
+            @keyframes swing {
+              0% { transform: rotate(0deg); }
+              10% { transform: rotate(15deg); }
+              20% { transform: rotate(-10deg); }
+              30% { transform: rotate(5deg); }
+              40% { transform: rotate(-5deg); }
+              50% { transform: rotate(0deg); }
+              100% { transform: rotate(0deg); }
+            }
+          `}</style>
 
-          {/* User Card */}
-          <div className="flex items-center gap-3 pl-3 border-l border-slate-800">
-            <div className="text-right hidden sm:block">
-              <p className="text-xs font-semibold text-white leading-tight">{user?.name || 'User'}</p>
-              <p className="text-[10px] text-slate-400">{user?.email}</p>
+          {showNotifDropdown && (
+            <div className="absolute right-0 top-14 w-80 bg-[#090d16]/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.7)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800/80 bg-slate-900/50">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-indigo-500/20 border border-indigo-500/30">
+                    <BotMessageSquare className="w-4 h-4 text-indigo-400" />
+                  </div>
+                  <span className="text-sm font-bold text-white tracking-tight">AI Advisor</span>
+                </div>
+                {notifications.length > 0 && (
+                  <button onClick={handleMarkAllRead} className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-400 transition-colors flex items-center gap-1 px-2 py-1 rounded bg-slate-800/50 hover:bg-slate-800">
+                    <CheckCheck className="w-3.5 h-3.5" />
+                    Mark Read
+                  </button>
+                )}
+              </div>
+              <div className="max-h-80 overflow-y-auto divide-y divide-slate-800/60 custom-scrollbar">
+                {notifications.length === 0 ? (
+                  <div className="px-5 py-8 text-center text-slate-500 flex flex-col items-center">
+                    <div className="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center mb-3">
+                      <Bell className="w-6 h-6 text-slate-600" />
+                    </div>
+                    <p className="font-semibold text-sm text-slate-400">All caught up!</p>
+                    <p className="text-xs text-slate-500 mt-1">No new advisor alerts.</p>
+                  </div>
+                ) : (
+                  notifications.map((n: any) => (
+                    <Link
+                      key={n.id}
+                      href={n.report_id ? `/ai-advisor?report=${n.report_id}` : '/ai-advisor'}
+                      onClick={() => setShowNotifDropdown(false)}
+                      className="block px-5 py-4 hover:bg-slate-800/40 transition-colors group"
+                    >
+                      <p className="text-sm font-bold text-slate-200 leading-tight group-hover:text-indigo-300 transition-colors">{n.title}</p>
+                      <p className="text-xs text-slate-400 mt-1 line-clamp-2">{n.body}</p>
+                      <p className="text-[10px] uppercase font-bold tracking-wider text-slate-600 mt-2">{new Date(n.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                    </Link>
+                  ))
+                )}
+              </div>
+              <div className="p-3 border-t border-slate-800/80 bg-slate-900/50">
+                <Link href="/ai-advisor" onClick={() => setShowNotifDropdown(false)} className="block w-full py-2 text-center text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-md shadow-indigo-500/20 transition-all">
+                  Open AI Advisor Hub
+                </Link>
+              </div>
             </div>
+          )}
+        </div>
+
+        {/* User Card */}
+        <div className="flex items-center gap-3 pl-1">
+          <div className="relative group cursor-pointer">
+            <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500 to-purple-500 rounded-full blur-md opacity-40 group-hover:opacity-70 transition-opacity duration-300" />
             <img
               src={user?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.name || 'User'}`}
               alt={user?.name || 'Avatar'}
-              className="w-8 h-8 rounded-full border border-slate-700 bg-slate-800 object-cover"
+              className="w-10 h-10 rounded-full border-2 border-slate-800 bg-slate-900 object-cover relative z-10 transition-transform duration-300 group-hover:scale-105"
             />
-            <button
-              onClick={logout}
-              title="Sign out"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
           </div>
+          <div className="text-left hidden sm:block mr-2 cursor-pointer group">
+            <p className="text-sm font-bold text-white leading-tight group-hover:text-indigo-400 transition-colors">{user?.name || 'User'}</p>
+            <p className="text-[10px] font-semibold text-slate-500 tracking-wide uppercase">{currentHousehold?.role || 'Member'}</p>
+          </div>
+          
+          <button
+            onClick={logout}
+            title="Sign out"
+            className="p-2.5 rounded-xl bg-slate-900/50 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all duration-300"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
+
+      </div>
     </header>
   );
 };

@@ -18,13 +18,13 @@ export class SmsPermissionService {
 
   static async hasSmsPermission(): Promise<boolean> {
     if (Platform.OS !== 'android') return false;
-    
+
     // Check both standard permission and our native module 
     // Native module handles it explicitly
     if (SmsModule) {
       return await SmsModule.hasSmsPermission();
     }
-    
+
     return (
       (await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECEIVE_SMS)) &&
       (await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_SMS))
@@ -50,10 +50,10 @@ export class SmsPermissionService {
   }
 
   static async getDeviceId(): Promise<string> {
-      if (Platform.OS !== 'android') return 'unknown_device';
-      if (SmsModule) {
-          return await SmsModule.getDeviceId();
-      }
-      return 'fallback_device_id_' + Math.random().toString(36).substring(7);
+    if (Platform.OS !== 'android') return 'unknown_device';
+    if (SmsModule) {
+      return await SmsModule.getDeviceId();
+    }
+    return 'fallback_device_id_' + Math.random().toString(36).substring(7);
   }
 }

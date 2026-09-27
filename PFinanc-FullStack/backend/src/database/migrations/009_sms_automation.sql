@@ -1,7 +1,7 @@
 -- 009_sms_automation.sql
 
 -- 1. Device Registrations
-CREATE TABLE device_registrations (
+CREATE TABLE IF NOT EXISTS device_registrations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     device_id VARCHAR(255) NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE device_registrations (
 );
 
 -- 2. Automatic Transaction Settings
-CREATE TABLE automatic_transaction_settings (
+CREATE TABLE IF NOT EXISTS automatic_transaction_settings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     approval_mode VARCHAR(50) DEFAULT 'MANUAL_APPROVAL', -- MANUAL_APPROVAL, AUTO_APPROVE_HIGH_CONFIDENCE, FULL_MANUAL
@@ -27,7 +27,7 @@ CREATE TABLE automatic_transaction_settings (
 );
 
 -- 3. SMS Ingestion Events (Audit Log)
-CREATE TABLE sms_ingestion_events (
+CREATE TABLE IF NOT EXISTS sms_ingestion_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     device_id VARCHAR(255) NOT NULL,
@@ -43,7 +43,7 @@ CREATE TABLE sms_ingestion_events (
 );
 
 -- 4. Transaction Candidates
-CREATE TABLE transaction_candidates (
+CREATE TABLE IF NOT EXISTS transaction_candidates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     household_id UUID NOT NULL REFERENCES households(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -80,7 +80,12 @@ CREATE TABLE transaction_candidates (
 );
 
 -- Update sms_ingestion_events to add foreign key constraint if needed, but not strictly required since it's an audit table.
-ALTER TABLE sms_ingestion_events ADD CONSTRAINT fk_sms_candidate FOREIGN KEY (transaction_candidate_id) REFERENCES transaction_candidates(id) ON DELETE SET NULL;
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_sms_candidate') THEN
+        ALTER TABLE sms_ingestion_events ADD CONSTRAINT fk_sms_candidate FOREIGN KEY (transaction_candidate_id) REFERENCES transaction_candidates(id) ON DELETE SET NULL;
+    END IF;
+END $$;
 
 -- 5. Add columns to transactions table to support source metadata
 -- (NOTE: IF NOT EXISTS is not standard for ADD COLUMN in older postgres without complex blocks, but works in Postgres 11+)
@@ -88,7 +93,7 @@ ALTER TABLE sms_ingestion_events ADD CONSTRAINT fk_sms_candidate FOREIGN KEY (tr
 -- Actually the previous file had source_type and source_reference already? Let's check.
 -- "source_type: data.source_type || 'MANUAL'" was in transactions.service.ts. It probably exists.
 -- Let's NOT add source_type and source_reference if they exist. Let's just add source_candidate_id.
-ALTER TABLE transactions ADD COLUMN source_candidate_id UUID REFERENCES transaction_candidates(id) ON DELETE SET NULL;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS source_candidate_id UUID REFERENCES transaction_candidates(id) ON DELETE SET NULL;
 
 -- 5.5 Create trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -100,16 +105,19 @@ END;
 $$ language 'plpgsql';
 
 -- 6. Trigger for updated_at on Candidates
+DROP TRIGGER IF EXISTS update_transaction_candidates_modtime ON transaction_candidates;
 CREATE TRIGGER update_transaction_candidates_modtime
 BEFORE UPDATE ON transaction_candidates
 FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
 
 -- 7. Trigger for updated_at on Settings
+DROP TRIGGER IF EXISTS update_automatic_transaction_settings_modtime ON automatic_transaction_settings;
 CREATE TRIGGER update_automatic_transaction_settings_modtime
 BEFORE UPDATE ON automatic_transaction_settings
 FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
 
 -- 8. Trigger for updated_at on Device Registrations
+DROP TRIGGER IF EXISTS update_device_registrations_modtime ON device_registrations;
 CREATE TRIGGER update_device_registrations_modtime
 BEFORE UPDATE ON device_registrations
 FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
