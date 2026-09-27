@@ -17,6 +17,7 @@ interface FilterBarProps {
 
 const TYPE_FILTERS: Filter[] = [
   { key: 'all', label: 'All' },
+  { key: 'NEEDS_REVIEW', label: 'Needs Review', icon: 'alert-circle-outline' },
   { key: 'EXPENSE', label: 'Expenses', icon: 'arrow-up-circle' },
   { key: 'INCOME', label: 'Income', icon: 'arrow-down-circle' },
   { key: 'TRANSFER', label: 'Transfers', icon: 'swap-horizontal-circle' },

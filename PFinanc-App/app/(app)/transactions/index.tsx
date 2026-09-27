@@ -21,7 +21,6 @@ import { categoriesApi } from '../../../src/api/misc';
 import { TransactionRow, Transaction } from '../../../src/components/transactions/TransactionRow';
 import { FilterBar, TYPE_FILTERS } from '../../../src/components/transactions/FilterBar';
 import { SkeletonRow } from '../../../src/components/ui/Skeleton';
-import { Button, Input } from '../../../src/components/ui';
 import { Colors, Spacing, Typography } from '../../../src/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { toISODateString } from '../../../src/utils/date';
@@ -32,18 +31,6 @@ export default function TransactionsScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const [typeFilter, setTypeFilter] = useState('all');
-  const [showAddModal, setShowAddModal] = useState(false);
-
-  // Add transaction form state
-  const [form, setForm] = useState({
-    description: '',
-    amount: '',
-    type: 'EXPENSE' as 'INCOME' | 'EXPENSE',
-    account_id: '',
-    category_id: '',
-    date: toISODateString(),
-    notes: '',
-  });
 
   const {
     data,
@@ -72,36 +59,7 @@ export default function TransactionsScreen() {
   const { data: accountsData } = useQuery({ queryKey: ['accounts'], queryFn: accountsApi.getAll });
   const { data: categoriesData } = useQuery({ queryKey: ['categories'], queryFn: categoriesApi.getAll });
 
-  const createMutation = useMutation({
-    mutationFn: transactionsApi.create,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transactions'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-      setShowAddModal(false);
-      resetForm();
-    },
-    onError: (err: any) => Alert.alert('Error', err.displayMessage ?? 'Failed to add transaction'),
-  });
-
-  const resetForm = () =>
-    setForm({ description: '', amount: '', type: 'EXPENSE', account_id: '', category_id: '', date: toISODateString(), notes: '' });
-
-  const handleAddTransaction = () => {
-    if (!form.description.trim() || !form.amount || !form.account_id) {
-      Alert.alert('Required Fields', 'Please fill in description, amount, and account.');
-      return;
-    }
-    createMutation.mutate({
-      description: form.description.trim(),
-      amount: parseFloat(form.amount),
-      type: form.type,
-      account_id: form.account_id,
-      category_id: form.category_id || undefined,
-      transaction_date: form.date,
-      notes: form.notes.trim() || undefined,
-      status: 'CONFIRMED',
-    });
-  };
+  // Form removed to Quick Add route
 
   const allTxs: Transaction[] = (data?.pages ?? []).flatMap(
     (p) => p?.data?.transactions ?? []
@@ -142,10 +100,7 @@ export default function TransactionsScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Ledger</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddModal(true)}>
-          <MaterialCommunityIcons name="plus" size={20} color={Colors.onPrimary} />
-        </TouchableOpacity>
+        <Text style={styles.title}>Transactions</Text>
       </View>
 
       {/* Filter Bar */}
@@ -168,109 +123,6 @@ export default function TransactionsScreen() {
         style={styles.list}
       />
 
-      {/* Add Transaction Modal */}
-      <Modal visible={showAddModal} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView style={styles.modalSafe} edges={['top', 'bottom']}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Add Transaction</Text>
-            <TouchableOpacity onPress={() => { setShowAddModal(false); resetForm(); }}>
-              <MaterialCommunityIcons name="close" size={24} color={Colors.onSurface} />
-            </TouchableOpacity>
-          </View>
-
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-            <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
-              {/* Type Toggle */}
-              <View style={styles.typeToggle}>
-                {(['EXPENSE', 'INCOME'] as const).map((t) => (
-                  <TouchableOpacity
-                    key={t}
-                    style={[styles.typeBtn, form.type === t && (t === 'INCOME' ? styles.typeBtnIncome : styles.typeBtnExpense)]}
-                    onPress={() => setForm((f) => ({ ...f, type: t }))}
-                  >
-                    <Text style={[styles.typeBtnLabel, form.type === t && styles.typeBtnLabelActive]}>
-                      {t === 'INCOME' ? '+ Income' : '- Expense'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Input
-                label="Description *"
-                value={form.description}
-                onChangeText={(v) => setForm((f) => ({ ...f, description: v }))}
-                placeholder="e.g. Grocery shopping"
-              />
-              <Input
-                label="Amount (₹) *"
-                value={form.amount}
-                onChangeText={(v) => setForm((f) => ({ ...f, amount: v }))}
-                keyboardType="decimal-pad"
-                prefix="₹"
-                placeholder="0.00"
-              />
-              <Input
-                label="Date"
-                value={form.date}
-                onChangeText={(v) => setForm((f) => ({ ...f, date: v }))}
-                placeholder="YYYY-MM-DD"
-              />
-
-              {/* Account Selector */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>Account *</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillRow}>
-                  {accounts.map((acc: any) => (
-                    <TouchableOpacity
-                      key={acc.id}
-                      style={[styles.selPill, form.account_id === acc.id && styles.selPillActive]}
-                      onPress={() => setForm((f) => ({ ...f, account_id: acc.id }))}
-                    >
-                      <Text style={[styles.selPillText, form.account_id === acc.id && styles.selPillTextActive]}>
-                        {acc.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-
-              {/* Category Selector */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>Category</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillRow}>
-                  {categories.filter((c: any) => !c.parent_id).map((cat: any) => (
-                    <TouchableOpacity
-                      key={cat.id}
-                      style={[styles.selPill, form.category_id === cat.id && styles.selPillActive]}
-                      onPress={() => setForm((f) => ({ ...f, category_id: f.category_id === cat.id ? '' : cat.id }))}
-                    >
-                      <Text style={[styles.selPillText, form.category_id === cat.id && styles.selPillTextActive]}>
-                        {cat.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-
-              <Input
-                label="Notes"
-                value={form.notes}
-                onChangeText={(v) => setForm((f) => ({ ...f, notes: v }))}
-                placeholder="Optional note..."
-                multiline
-              />
-
-              <Button
-                label={createMutation.isPending ? 'Saving...' : 'Save Transaction'}
-                fullWidth
-                loading={createMutation.isPending}
-                onPress={handleAddTransaction}
-                style={styles.saveBtn}
-              />
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
     </SafeAreaView>
   );
 }

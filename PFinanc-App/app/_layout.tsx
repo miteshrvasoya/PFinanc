@@ -71,6 +71,7 @@ export default function RootLayout() {
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(app)" />
           <Stack.Screen name="onboarding" />
+          <Stack.Screen name="quick-add" options={{ presentation: 'modal' }} />
         </Stack>
       </AuthGate>
     </QueryClientProvider>

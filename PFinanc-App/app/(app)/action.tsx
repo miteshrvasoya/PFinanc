@@ -1,0 +1,3 @@
+export default function ActionTab() {
+  return null;
+}

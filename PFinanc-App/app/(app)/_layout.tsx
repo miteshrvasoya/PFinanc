@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../src/theme';
 import { Platform, StyleSheet, View } from 'react-native';
@@ -9,6 +9,8 @@ function TabBarIcon({ name, color }: { name: string; color: string | any }) {
 }
 
 export default function AppLayout() {
+  const router = useRouter();
+
   return (
     <Tabs
       screenOptions={{
@@ -24,14 +26,38 @@ export default function AppLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
+          tabBarIcon: ({ color }) => <TabBarIcon name="home-variant" color={color} />,
         }}
       />
       <Tabs.Screen
         name="transactions/index"
         options={{
-          title: 'Ledger',
-          tabBarIcon: ({ color }) => <TabBarIcon name="format-list-bulleted" color={color} />,
+          title: 'Transactions',
+          tabBarIcon: ({ color }) => <TabBarIcon name="swap-horizontal" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="action"
+        options={{
+          title: '',
+          tabBarIcon: () => (
+            <View style={styles.fabIconContainer}>
+              <MaterialCommunityIcons name="plus" size={28} color={Colors.onPrimary} />
+            </View>
+          ),
+        }}
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault();
+            router.push('/quick-add');
+          },
+        }}
+      />
+      <Tabs.Screen
+        name="investments/index"
+        options={{
+          title: 'Investments',
+          tabBarIcon: ({ color }) => <TabBarIcon name="trending-up" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -41,26 +67,16 @@ export default function AppLayout() {
           tabBarIcon: ({ color }) => <TabBarIcon name="bank" color={color} />,
         }}
       />
-      <Tabs.Screen
-        name="investments/index"
-        options={{
-          title: 'Invest',
-          tabBarIcon: ({ color }) => <TabBarIcon name="chart-line" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="more/index"
-        options={{
-          title: 'More',
-          tabBarIcon: ({ color }) => <TabBarIcon name="dots-horizontal" color={color} />,
-        }}
-      />
       {/* Hidden tabs — accessible via router.push */}
       <Tabs.Screen name="transactions/[id]" options={{ href: null }} />
+      <Tabs.Screen name="more/index" options={{ href: null }} />
       <Tabs.Screen name="accounts/[id]" options={{ href: null }} />
       <Tabs.Screen name="family/index" options={{ href: null, title: 'Family' }} />
       <Tabs.Screen name="more/import" options={{ href: null }} />
       <Tabs.Screen name="more/transfer" options={{ href: null }} />
+      <Tabs.Screen name="automation/index" options={{ href: null }} />
+      <Tabs.Screen name="automation/review" options={{ href: null }} />
+      <Tabs.Screen name="automation/settings" options={{ href: null }} />
     </Tabs>
   );
 }
@@ -85,4 +101,18 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   tabItem: { paddingTop: 4 },
+  fabIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Platform.OS === 'ios' ? -10 : 20,
+    shadowColor: Colors.secondary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 5,
+  },
 });
