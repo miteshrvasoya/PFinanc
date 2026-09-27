@@ -1,36 +1,37 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  SectionList,
   RefreshControl,
   TouchableOpacity,
-  Modal,
-  Alert,
-  KeyboardAvoidingView,
+  TextInput,
   Platform,
-  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { transactionsApi } from '../../../src/api/transactions';
-import { accountsApi } from '../../../src/api/accounts';
-import { categoriesApi } from '../../../src/api/misc';
 import { TransactionRow, Transaction } from '../../../src/components/transactions/TransactionRow';
 import { FilterBar, TYPE_FILTERS } from '../../../src/components/transactions/FilterBar';
 import { SkeletonRow } from '../../../src/components/ui/Skeleton';
 import { Colors, Spacing, Typography } from '../../../src/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { toISODateString } from '../../../src/utils/date';
+import { formatRelativeDate } from '../../../src/utils/date';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
 const PAGE_SIZE = 25;
 
+interface Section {
+  title: string;
+  data: Transaction[];
+}
+
 export default function TransactionsScreen() {
   const router = useRouter();
-  const qc = useQueryClient();
   const [typeFilter, setTypeFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const {
     data,
@@ -56,41 +57,73 @@ export default function TransactionsScreen() {
     initialPageParam: 1,
   });
 
-  const { data: accountsData } = useQuery({ queryKey: ['accounts'], queryFn: accountsApi.getAll });
-  const { data: categoriesData } = useQuery({ queryKey: ['categories'], queryFn: categoriesApi.getAll });
+  const allTxs: Transaction[] = useMemo(() => {
+    return (data?.pages ?? []).flatMap(p => p?.data?.transactions ?? []);
+  }, [data]);
 
-  // Form removed to Quick Add route
+  // Group transactions by relative date (e.g., Today, Yesterday, 12 Oct)
+  const sections: Section[] = useMemo(() => {
+    let filteredTxs = allTxs;
+    if (searchQuery.trim()) {
+      const lowerQ = searchQuery.toLowerCase();
+      filteredTxs = filteredTxs.filter(tx =>
+        tx.description.toLowerCase().includes(lowerQ) ||
+        tx.category_name?.toLowerCase().includes(lowerQ) ||
+        tx.account_name?.toLowerCase().includes(lowerQ)
+      );
+    }
 
-  const allTxs: Transaction[] = (data?.pages ?? []).flatMap(
-    (p) => p?.data?.transactions ?? []
-  );
+    const grouped = filteredTxs.reduce((acc, tx) => {
+      const title = formatRelativeDate(tx.transaction_date);
+      if (!acc[title]) acc[title] = [];
+      acc[title].push(tx);
+      return acc;
+    }, {} as Record<string, Transaction[]>);
 
-  const accounts = accountsData?.data ?? [];
-  const categories = categoriesData?.data ?? [];
+    return Object.entries(grouped).map(([title, data]) => ({ title, data }));
+  }, [allTxs, searchQuery]);
 
   const renderItem = useCallback(
-    ({ item }: { item: Transaction }) => (
-      <TransactionRow
-        transaction={item}
-        onPress={() => router.push(`/(app)/transactions/${item.id}`)}
-      />
+    ({ item, index }: { item: Transaction; index: number }) => (
+      <Animated.View entering={FadeInDown.delay(index * 30).duration(300)}>
+        <TransactionRow
+          transaction={item}
+          onPress={() => router.push(`/(app)/transactions/${item.id}`)}
+        />
+      </Animated.View>
     ),
     [router]
   );
 
+  const renderSectionHeader = ({ section: { title } }: { section: Section }) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+    </View>
+  );
+
   const renderFooter = () => {
-    if (!isFetchingNextPage) return null;
-    return <SkeletonRow />;
+    if (!isFetchingNextPage) return <View style={{ height: 100 }} />;
+    return <View style={{ paddingVertical: 16 }}><SkeletonRow /></View>;
   };
 
   const renderEmpty = () => {
-    if (isLoading) return null;
+    if (isLoading) return (
+      <View style={{ paddingTop: 20 }}>
+        {[1, 2, 3, 4, 5].map(i => <SkeletonRow key={i} />)}
+      </View>
+    );
     return (
       <View style={styles.emptyBox}>
-        <MaterialCommunityIcons name="format-list-bulleted" size={48} color={Colors.onSurfaceSubtle} />
-        <Text style={styles.emptyTitle}>No transactions</Text>
+        <View style={styles.emptyIconBg}>
+          <MaterialCommunityIcons name="text-box-search-outline" size={48} color={Colors.onSurfaceSubtle} />
+        </View>
+        <Text style={styles.emptyTitle}>No transactions found</Text>
         <Text style={styles.emptySubText}>
-          {typeFilter !== 'all' ? `No ${typeFilter.toLowerCase()} transactions found` : 'Add your first transaction'}
+          {searchQuery
+            ? `We couldn't find anything matching "${searchQuery}"`
+            : typeFilter !== 'all'
+              ? `No ${typeFilter.toLowerCase().replace('_', ' ')} transactions match your criteria.`
+              : 'Add your first transaction using the + button.'}
         </Text>
       </View>
     );
@@ -98,31 +131,50 @@ export default function TransactionsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Header */}
+      {/* Modern Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Transactions</Text>
+        <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}>
+          <MaterialCommunityIcons name="filter-variant" size={22} color={Colors.onSurface} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchBar}>
+          <MaterialCommunityIcons name="magnify" size={20} color={Colors.onSurfaceMuted} style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search transactions, categories..."
+            placeholderTextColor={Colors.onSurfaceSubtle}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
+        </View>
       </View>
 
       {/* Filter Bar */}
       <FilterBar filters={TYPE_FILTERS} selectedKey={typeFilter} onSelect={setTypeFilter} />
 
       {/* Transaction List */}
-      <FlatList
-        data={allTxs}
+      <SectionList
+        sections={sections}
         renderItem={renderItem}
+        renderSectionHeader={renderSectionHeader}
         keyExtractor={(item) => item.id}
         ListEmptyComponent={renderEmpty}
         ListFooterComponent={renderFooter}
         onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
         onEndReachedThreshold={0.3}
         refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={Colors.secondary} />
+          <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={Colors.primary} />
         }
-        contentContainerStyle={allTxs.length === 0 ? styles.emptyContent : undefined}
-        ItemSeparatorComponent={() => null}
-        style={styles.list}
+        contentContainerStyle={sections.length === 0 ? styles.emptyContent : styles.listContent}
+        stickySectionHeadersEnabled={false}
+        showsVerticalScrollIndicator={false}
       />
-
     </SafeAreaView>
   );
 }
@@ -134,65 +186,77 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: Spacing.layoutMargin,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    backgroundColor: Colors.surface,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
   },
-  title: { ...Typography.headlineMd, color: Colors.onSurface },
-  addBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.secondary,
+  title: { ...Typography.headlineMd, fontFamily: 'Inter_700Bold', color: Colors.onSurface },
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: Colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  list: { flex: 1 },
-  emptyContent: { flex: 1 },
-  emptyBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 10 },
-  emptyTitle: { ...Typography.headlineSm, color: Colors.onSurfaceMuted },
-  emptySubText: { ...Typography.bodySm, color: Colors.onSurfaceSubtle, textAlign: 'center' },
-
-  // Modal
-  modalSafe: { flex: 1, backgroundColor: Colors.surface },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  searchContainer: {
     paddingHorizontal: Spacing.layoutMargin,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    paddingBottom: Spacing.sm,
   },
-  modalTitle: { ...Typography.headlineMd, color: Colors.onSurface },
-  modalContent: { padding: Spacing.layoutMargin, gap: Spacing.md, paddingBottom: 40 },
-  typeToggle: { flexDirection: 'row', gap: Spacing.sm },
-  typeBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: Spacing.buttonRadius,
-    borderWidth: 1,
-    borderColor: Colors.border,
+  searchBar: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  typeBtnExpense: { backgroundColor: Colors.dangerBg, borderColor: Colors.danger },
-  typeBtnIncome: { backgroundColor: Colors.successBg, borderColor: Colors.success },
-  typeBtnLabel: { ...Typography.labelMd, color: Colors.onSurfaceMuted },
-  typeBtnLabelActive: { color: Colors.onSurface, fontFamily: 'Inter_700Bold' },
-  fieldGroup: { gap: Spacing.xs },
-  fieldLabel: { ...Typography.labelMd, color: Colors.onSurface },
-  pillRow: { gap: Spacing.sm, paddingVertical: 4 },
-  selPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: Spacing.pillRadius,
+    backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
-    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    height: 44,
+    paddingHorizontal: 12,
   },
-  selPillActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  selPillText: { ...Typography.labelMd, color: Colors.onSurfaceMuted },
-  selPillTextActive: { color: Colors.onPrimary },
-  saveBtn: { marginTop: Spacing.sm },
+  searchIcon: { marginRight: 8 },
+  searchInput: {
+    flex: 1,
+    ...Typography.bodyMd,
+    color: Colors.onSurface,
+    height: '100%',
+  },
+  listContent: { paddingTop: Spacing.sm, paddingBottom: 100 },
+  emptyContent: { flex: 1 },
+  sectionHeader: {
+    paddingVertical: 12,
+    paddingHorizontal: Spacing.layoutMargin,
+    backgroundColor: Colors.background,
+    marginTop: 8,
+  },
+  sectionTitle: {
+    ...Typography.labelMd,
+    fontFamily: 'Inter_600SemiBold',
+    color: Colors.onSurfaceMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  emptyBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 16, marginTop: 40 },
+  emptyIconBg: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: Colors.shadowColor,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  emptyTitle: { ...Typography.headlineSm, color: Colors.onSurface, fontFamily: 'Inter_600SemiBold' },
+  emptySubText: { ...Typography.bodyMd, color: Colors.onSurfaceMuted, textAlign: 'center', lineHeight: 22 },
 });
