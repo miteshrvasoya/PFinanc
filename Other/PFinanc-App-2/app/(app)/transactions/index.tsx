@@ -7,14 +7,17 @@ import {
   RefreshControl,
   TouchableOpacity,
   TextInput,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { transactionsApi } from '../../../src/api/transactions';
 import apiClient from '../../../src/api/client';
 import { TransactionRow, Transaction } from '../../../src/components/transactions/TransactionRow';
 import { FilterBar, TYPE_FILTERS } from '../../../src/components/transactions/FilterBar';
+import { FilterBottomSheet } from '../../../src/components/transactions/FilterBottomSheet';
 import { SkeletonRow } from '../../../src/components/ui/Skeleton';
 import { Colors, Spacing, Typography } from '../../../src/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -32,6 +35,7 @@ export default function TransactionsScreen() {
   const router = useRouter();
   const [typeFilter, setTypeFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   // 1. Fetch transactions
   const {
@@ -121,27 +125,46 @@ export default function TransactionsScreen() {
 
   // Renderers
   const renderItem = useCallback(
-    ({ item, index }: { item: any; index: number }) => {
+    ({ item, index, section }: { item: any; index: number; section: Section }) => {
+      const isFirst = index === 0;
+      const isLast = index === section.data.length - 1;
+
       if (typeFilter === 'NEEDS_REVIEW') {
         const isCredit = item.direction === 'CREDIT';
         return (
           <Animated.View entering={FadeInDown.delay(index * 30).duration(300)}>
             <TouchableOpacity 
-              style={styles.candidateCard}
+              style={[
+                styles.candidateCard,
+                isFirst && styles.groupTopRadius,
+                isLast && styles.groupBottomRadius,
+                !isLast && styles.groupBorderBottom
+              ]}
               onPress={() => router.push({ pathname: '/(app)/automation/review', params: { id: item.id } })}
               activeOpacity={0.7}
             >
               <View style={styles.candidateHeader}>
-                <Text style={styles.candidateMerchant}>{item.merchant || 'Unknown Merchant'}</Text>
-                <Text style={[styles.candidateAmount, { color: isCredit ? Colors.success : Colors.danger }]}>
+                <View style={styles.candidateMerchantWrap}>
+                  <View style={[styles.candidateIcon, { backgroundColor: isCredit ? Colors.successBg : Colors.warningBg }]}>
+                    <MaterialCommunityIcons 
+                      name={isCredit ? "arrow-down-circle" : "auto-fix"} 
+                      size={20} 
+                      color={isCredit ? Colors.success : Colors.warning} 
+                    />
+                  </View>
+                  <Text style={styles.candidateMerchant}>{item.merchant || 'Unknown Merchant'}</Text>
+                </View>
+                <Text style={[styles.candidateAmount, { color: isCredit ? Colors.success : Colors.onSurface }]}>
                   {isCredit ? '+' : '-'}₹{item.amount}
                 </Text>
               </View>
-              <Text style={styles.candidateDetails}>
-                {formatRelativeDate(item.transaction_date)} • {item.confidence * 100}% Confidence • Detected from SMS
-              </Text>
-              <View style={styles.statusBadge}>
-                <Text style={styles.statusText}>Review Needed</Text>
+              <View style={styles.candidateFooter}>
+                <Text style={styles.candidateDetails}>
+                  {formatRelativeDate(item.transaction_date)} • SMS
+                </Text>
+                <View style={styles.statusBadge}>
+                  <Text style={styles.statusText}>Needs Review</Text>
+                </View>
               </View>
             </TouchableOpacity>
           </Animated.View>
@@ -149,11 +172,18 @@ export default function TransactionsScreen() {
       }
 
       return (
-        <Animated.View entering={FadeInDown.delay(index * 30).duration(300)}>
-          <TransactionRow
-            transaction={item as Transaction}
-            onPress={() => router.push(`/(app)/transactions/${item.id}`)}
-          />
+        <Animated.View entering={FadeInDown.delay(index * 20).duration(200)}>
+          <View style={[
+            styles.transactionRowWrap,
+            isFirst && styles.groupTopRadius,
+            isLast && styles.groupBottomRadius,
+            !isLast && styles.groupBorderBottom
+          ]}>
+            <TransactionRow
+              transaction={item as Transaction}
+              onPress={() => router.push(`/(app)/transactions/${item.id}`)}
+            />
+          </View>
         </Animated.View>
       );
     },
@@ -166,14 +196,9 @@ export default function TransactionsScreen() {
     </View>
   );
 
-  const renderFooter = () => {
-    if (!isFetchingNextPage) return <View style={{ height: 100 }} />;
-    return <View style={{ paddingVertical: 16 }}><SkeletonRow /></View>;
-  };
-
   const renderEmpty = () => {
     if (isLoading) return (
-      <View style={{ paddingTop: 20 }}>
+      <View style={{ paddingTop: 20, paddingHorizontal: Spacing.layoutMargin }}>
         {[1, 2, 3, 4, 5].map(i => <SkeletonRow key={i} />)}
       </View>
     );
@@ -203,7 +228,7 @@ export default function TransactionsScreen() {
           <MaterialCommunityIcons 
             name={iconName} 
             size={48} 
-            color={typeFilter === 'NEEDS_REVIEW' ? Colors.success : Colors.onSurfaceSubtle} 
+            color={typeFilter === 'NEEDS_REVIEW' ? Colors.success : Colors.primary} 
           />
         </View>
         <Text style={styles.emptyTitle}>{emptyMsg}</Text>
@@ -213,33 +238,49 @@ export default function TransactionsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Modern Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Transactions</Text>
-        <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}>
-          <MaterialCommunityIcons name="filter-variant" size={22} color={Colors.onSurface} />
-        </TouchableOpacity>
-      </View>
+    <View style={styles.container}>
+      {/* Premium Gradient Header */}
+      <LinearGradient
+        colors={[Colors.primary, Colors.primaryDark]}
+        style={styles.gradientHeader}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <View style={styles.headerTop}>
+            <Text style={styles.headerTitle}>Transactions</Text>
+            <View style={styles.headerActions}>
+              <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7} onPress={() => setShowFilters(true)}>
+                <MaterialCommunityIcons name="filter-variant" size={24} color={Colors.onPrimary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+          
+          {/* Overlapping Search Bar */}
+          <View style={styles.searchContainer}>
+            <MaterialCommunityIcons name="magnify" size={20} color={Colors.onSurfaceMuted} style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search merchants, amounts..."
+              placeholderTextColor={Colors.onSurfaceSubtle}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <MaterialCommunityIcons name="close-circle" size={18} color={Colors.onSurfaceSubtle} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </SafeAreaView>
+      </LinearGradient>
 
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBar}>
-          <MaterialCommunityIcons name="magnify" size={20} color={Colors.onSurfaceMuted} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search transactions, categories..."
-            placeholderTextColor={Colors.onSurfaceSubtle}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-            clearButtonMode="while-editing"
-          />
-        </View>
+      {/* Filter Tabs */}
+      <View style={styles.filterBarContainer}>
+        <FilterBar filters={filtersWithBadge} selectedKey={typeFilter} onSelect={setTypeFilter} />
       </View>
-
-      {/* Filter Bar with Needs Review Badge */}
-      <FilterBar filters={filtersWithBadge} selectedKey={typeFilter} onSelect={setTypeFilter} />
 
       {/* Transaction List */}
       <SectionList
@@ -248,7 +289,7 @@ export default function TransactionsScreen() {
         renderSectionHeader={renderSectionHeader}
         keyExtractor={(item) => item.id}
         ListEmptyComponent={renderEmpty}
-        ListFooterComponent={renderFooter}
+        ListFooterComponent={() => (!isFetchingNextPage ? <View style={{ height: 100 }} /> : <View style={{ padding: 16 }}><SkeletonRow /></View>)}
         onEndReached={() => typeFilter !== 'NEEDS_REVIEW' && hasNextPage && !isFetchingNextPage && fetchNextPage()}
         onEndReachedThreshold={0.3}
         refreshControl={
@@ -258,49 +299,59 @@ export default function TransactionsScreen() {
         stickySectionHeadersEnabled={false}
         showsVerticalScrollIndicator={false}
       />
-    </SafeAreaView>
+
+      <FilterBottomSheet 
+        visible={showFilters} 
+        onClose={() => setShowFilters(false)} 
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.background },
-  header: {
+  container: { flex: 1, backgroundColor: Colors.surfaceDim },
+  gradientHeader: {
+    paddingBottom: Spacing.layoutMargin,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    elevation: 8,
+    shadowColor: Colors.primaryDark,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  headerSafe: {
+    paddingHorizontal: Spacing.layoutMargin,
+  },
+  headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: Spacing.layoutMargin,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.sm,
+    paddingVertical: Spacing.md,
   },
-  title: { ...Typography.headlineMd, fontFamily: 'Inter_700Bold', color: Colors.onSurface },
+  headerTitle: { ...Typography.headlineLg, color: Colors.onPrimary },
+  headerActions: { flexDirection: 'row', gap: Spacing.sm },
   iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: Colors.surface,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    shadowColor: Colors.shadowColor,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 4,
-    elevation: 2,
   },
   searchContainer: {
-    paddingHorizontal: Spacing.layoutMargin,
-    paddingBottom: Spacing.sm,
-  },
-  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
-    height: 44,
-    paddingHorizontal: 12,
+    borderRadius: 16,
+    height: 48,
+    paddingHorizontal: 16,
+    marginTop: Spacing.sm,
+    shadowColor: Colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   searchIcon: { marginRight: 8 },
   searchInput: {
@@ -309,31 +360,52 @@ const styles = StyleSheet.create({
     color: Colors.onSurface,
     height: '100%',
   },
-  listContent: { paddingTop: Spacing.sm, paddingBottom: 100 },
+  filterBarContainer: {
+    marginTop: Spacing.sm,
+  },
+  listContent: { 
+    paddingHorizontal: Spacing.layoutMargin, 
+    paddingBottom: 100 
+  },
   emptyContent: { flex: 1 },
   sectionHeader: {
     paddingVertical: 12,
-    paddingHorizontal: Spacing.layoutMargin,
-    backgroundColor: Colors.background,
-    marginTop: 8,
+    marginTop: 12,
+    marginBottom: 4,
   },
   sectionTitle: {
     ...Typography.labelMd,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Inter_700Bold',
     color: Colors.onSurfaceMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
   },
+  transactionRowWrap: {
+    backgroundColor: Colors.surface,
+    paddingHorizontal: 0, 
+  },
+  groupTopRadius: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  groupBottomRadius: {
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+  },
+  groupBorderBottom: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  
+  // Empty State
   emptyBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 16, marginTop: 40 },
   emptyIconBg: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(15, 23, 42, 0.05)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
   emptyTitle: { ...Typography.headlineSm, color: Colors.onSurface, fontFamily: 'Inter_600SemiBold' },
   emptySubText: { ...Typography.bodyMd, color: Colors.onSurfaceMuted, textAlign: 'center', lineHeight: 22 },
@@ -341,28 +413,20 @@ const styles = StyleSheet.create({
   // Needs Review Cards
   candidateCard: {
     backgroundColor: Colors.surface,
-    marginHorizontal: Spacing.layoutMargin,
-    marginBottom: Spacing.md,
-    padding: Spacing.base,
-    borderRadius: Spacing.cardRadius,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    shadowColor: Colors.shadowColor,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 3,
+    padding: Spacing.layoutMargin,
   },
-  candidateHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  candidateMerchant: { ...Typography.bodyMd, fontFamily: 'Inter_600SemiBold', color: Colors.onSurface },
+  candidateHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  candidateMerchantWrap: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  candidateIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  candidateMerchant: { ...Typography.bodyLg, fontFamily: 'Inter_600SemiBold', color: Colors.onSurface },
   candidateAmount: { ...Typography.numericData, fontVariant: ['tabular-nums'] },
-  candidateDetails: { ...Typography.labelSm, color: Colors.onSurfaceMuted, marginBottom: 12 },
+  candidateFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  candidateDetails: { ...Typography.labelSm, color: Colors.onSurfaceMuted },
   statusBadge: { 
-    alignSelf: 'flex-start', 
     backgroundColor: Colors.warningBg, 
-    paddingHorizontal: 10, 
+    paddingHorizontal: 8, 
     paddingVertical: 4, 
-    borderRadius: 12 
+    borderRadius: 8 
   },
-  statusText: { color: Colors.warning, ...Typography.labelSm, fontFamily: 'Inter_600SemiBold' },
+  statusText: { color: Colors.warning, ...Typography.labelSm, fontFamily: 'Inter_700Bold' },
 });
