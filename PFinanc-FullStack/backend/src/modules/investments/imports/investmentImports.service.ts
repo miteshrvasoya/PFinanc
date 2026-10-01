@@ -355,7 +355,7 @@ export class InvestmentImportsService {
         completed_at: new Date()
       }, '', [], client);
       
-      await logAudit(householdId, userId, 'INVESTMENT_IMPORT', importId, 'IMPORT_COMMITTED', null, { importedCount, mode: importRec.import_mode }, client);
+      await logAudit(householdId, userId, 'INVESTMENT_IMPORT', importId, 'IMPORT', null, { importedCount, mode: importRec.import_mode }, client);
     });
 
     return { importedCount };

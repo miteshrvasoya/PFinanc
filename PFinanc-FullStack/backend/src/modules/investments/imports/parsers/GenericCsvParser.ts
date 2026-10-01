@@ -95,7 +95,7 @@ export class GenericCsvParser {
 
     if (mode === 'HOLDINGS') {
       const avgCost = extractNum(mapping.averageCostCol ? rawRow[mapping.averageCostCol] : 0) || extractNum(mapping.priceCol ? rawRow[mapping.priceCol] : 0);
-      const currentPrice = extractNum(mapping.navCol ? rawRow[mapping.navCol] : rawRow[mapping.priceCol]);
+      const currentPrice = extractNum(mapping.navCol ? rawRow[mapping.navCol] : (mapping.priceCol ? rawRow[mapping.priceCol] : 0));
       const investedValue = extractNum(mapping.amountCol ? rawRow[mapping.amountCol] : 0) || (rawQty * avgCost);
       const currentValue = rawQty * currentPrice;
 

@@ -49,7 +49,7 @@ Output ONLY JSON, no markdown formatting.
          return null;
       }
 
-      const data = await response.json();
+      const data: any = await response.json();
       const content = data.choices[0].message.content.trim();
       
       // Clean up markdown if AI ignored instruction

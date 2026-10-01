@@ -42,7 +42,7 @@ export class AutomationController {
       // @ts-ignore
       const householdId = req.user.householdId;
       
-      const transaction = await AutomationService.approveCandidate(id, householdId, userId, req.body);
+      const transaction = await AutomationService.approveCandidate(id as string, householdId, userId, req.body);
       res.json({ success: true, transaction });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -55,7 +55,7 @@ export class AutomationController {
       // @ts-ignore
       const householdId = req.user.householdId;
       
-      await AutomationService.rejectCandidate(id, householdId);
+      await AutomationService.rejectCandidate(id as string, householdId);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
