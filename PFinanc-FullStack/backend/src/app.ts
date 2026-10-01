@@ -4,6 +4,7 @@ import { runMigrations } from './database/migrate.js';
 import { runSystemSeed } from './database/seed-system.js';
 import { config } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { requestLogger } from './middleware/requestLogger.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { householdRoutes } from './modules/households/households.routes.js';
 import { accountRoutes } from './modules/accounts/accounts.routes.js';
@@ -32,6 +33,9 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+
+// Global Request Logger
+app.use(requestLogger);
 
 // Health Check
 app.get('/health', (req, res) => {
