@@ -22,6 +22,7 @@ import { invitationsRoutes } from './modules/invitations/invitations.routes.js';
 import { statementImportsRoutes } from './modules/statement-imports/statementImports.routes.js';
 import { aiAdvisorRouter } from './modules/ai-advisor/aiAdvisor.routes.js';
 import { automationRouter } from './modules/automation/automation.routes.js';
+import vaultRoutes from './modules/vault/vault.routes.js';
 import { AIAdvisorScheduler } from './modules/ai-advisor/aiAdvisor.scheduler.js';
 
 export const app = express();
@@ -64,6 +65,7 @@ app.use('/api/physical-assets', physicalAssetsRoutes);
 app.use('/api/invitations', invitationsRoutes);
 app.use('/api/ai-advisor', aiAdvisorRouter);
 app.use('/api/automation', automationRouter);
+app.use('/api/vault', vaultRoutes);
 
 // Error Handler
 app.use(errorHandler);

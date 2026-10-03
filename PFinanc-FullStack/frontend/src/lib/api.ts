@@ -672,6 +672,29 @@ class ApiClient {
   async getAIAdvisorModels() {
     return this.request('/ai-advisor/models');
   }
+
+  // --- Vault API ---
+  async getVaultItems() {
+    return this.request('/vault');
+  }
+
+  async createVaultItem(data: { category?: string, encryptedData: string, iv: string, authTag: string, isShared?: boolean, household?: string }) {
+    return this.request('/vault', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateVaultItem(id: string, data: { category?: string, encryptedData?: string, iv?: string, authTag?: string, isShared?: boolean }) {
+    return this.request(`/vault/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteVaultItem(id: string) {
+    return this.request(`/vault/${id}`, { method: 'DELETE' });
+  }
 }
 
 export const api = new ApiClient();
