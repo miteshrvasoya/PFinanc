@@ -28,7 +28,7 @@ export class BudgetsController {
     try {
       const householdId = getHouseholdId(req);
       const userId = req.user!.id;
-      const budget = await BudgetsService.updateBudget(req.params.id, householdId, userId, req.body);
+      const budget = await BudgetsService.updateBudget(req.params.id as string, householdId, userId, req.body);
       res.json({ success: true, data: budget });
     } catch (error) {
       next(error);
@@ -39,7 +39,7 @@ export class BudgetsController {
     try {
       const householdId = getHouseholdId(req);
       const userId = req.user!.id;
-      await BudgetsService.deleteBudget(req.params.id, householdId, userId);
+      await BudgetsService.deleteBudget(req.params.id as string, householdId, userId);
       res.json({ success: true });
     } catch (error) {
       next(error);

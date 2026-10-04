@@ -17,7 +17,7 @@ export class LoansController {
   static async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const householdId = getHouseholdId(req);
-      const loan = await LoansService.getLoanById(req.params.id, householdId);
+      const loan = await LoansService.getLoanById(req.params.id as string, householdId);
       if (!loan) {
         return res.status(404).json({ success: false, error: { message: 'Loan not found' } });
       }
@@ -42,7 +42,7 @@ export class LoansController {
     try {
       const householdId = getHouseholdId(req);
       const userId = req.user!.id;
-      const loan = await LoansService.updateLoan(req.params.id, householdId, userId, req.body);
+      const loan = await LoansService.updateLoan(req.params.id as string, householdId, userId, req.body);
       res.json({ success: true, data: loan });
     } catch (error) {
       next(error);

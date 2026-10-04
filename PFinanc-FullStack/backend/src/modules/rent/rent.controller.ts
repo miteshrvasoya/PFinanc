@@ -28,7 +28,7 @@ export class RentController {
     try {
       const householdId = getHouseholdId(req);
       const userId = req.user!.id;
-      const rent = await RentService.updateAgreement(req.params.id, householdId, userId, req.body);
+      const rent = await RentService.updateAgreement(req.params.id as string, householdId, userId, req.body);
       res.json({ success: true, data: rent });
     } catch (error) {
       next(error);
