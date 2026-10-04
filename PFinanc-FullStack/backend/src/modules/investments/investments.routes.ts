@@ -24,7 +24,7 @@ investmentsRouter.post('/securities', SecuritiesController.create);
 investmentsRouter.get('/portfolio', PortfolioController.getSummary);
 investmentsRouter.get('/portfolio/holdings', PortfolioController.getHoldings);
 investmentsRouter.get('/portfolio/snapshots', PortfolioController.getSnapshots);
-
+investmentsRouter.post('/portfolio/snapshots', PortfolioController.addSnapshot);
 // 3. Investment Transactions
 investmentsRouter.get('/transactions', InvestmentTransactionsController.list);
 investmentsRouter.post('/transactions', InvestmentTransactionsController.create);

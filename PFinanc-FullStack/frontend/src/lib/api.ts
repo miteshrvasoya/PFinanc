@@ -392,6 +392,13 @@ class ApiClient {
     return this.request(`/investments/portfolio?view=${view}`);
   }
 
+  async addHoldingSnapshot(data: any) {
+    return this.request('/investments/portfolio/snapshots', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   async getHoldings(params: Record<string, any> = {}) {
     const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {

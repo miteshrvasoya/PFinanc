@@ -157,6 +157,37 @@ export const RecordTradeModal: React.FC<RecordTradeModalProps> = ({
         notes: formData.notes || null,
       };
 
+      if (formData.transaction_type === 'INITIAL') {
+        const payload: any = {
+          investment_account_id: formData.investment_account_id,
+          instrument_id: selectedSecurity?.id || null,
+          quantity: qty,
+          average_cost: price,
+          current_price: price, // For initial snapshots we just use the same input for both
+          as_of_date: formData.transaction_date,
+        };
+        const res = await api.addHoldingSnapshot(payload);
+        if (res.success) {
+          onSuccess();
+          if (!keepModalOpenRef.current) {
+            onClose();
+          } else {
+            setFormData({
+              ...formData,
+              quantity: '',
+              price_per_unit: '',
+              reference: '',
+              notes: '',
+            });
+            setSearchQuery('');
+            setSelectedSecurity(null);
+          }
+        } else {
+          alert(res.error?.message || 'Failed to record initial snapshot');
+        }
+        return;
+      }
+
       if (formData.transaction_type === 'BUY' || formData.transaction_type === 'SIP') {
         payload.funding_account_id = formData.funding_account_id || null;
       } else if (formData.transaction_type === 'DIVIDEND') {
@@ -214,15 +245,15 @@ export const RecordTradeModal: React.FC<RecordTradeModalProps> = ({
           {/* Action Type Tabs */}
           <div>
             <label className="block text-slate-300 font-medium mb-1.5">Action Type</label>
-            <div className="grid grid-cols-4 gap-1.5 p-1 bg-slate-900/80 rounded-xl border border-slate-800">
-              {['BUY', 'SELL', 'SIP', 'DIVIDEND'].map((type) => (
+            <div className="grid grid-cols-5 gap-1.5 p-1 bg-slate-900/80 rounded-xl border border-slate-800">
+              {['BUY', 'SELL', 'SIP', 'DIVIDEND', 'INITIAL'].map((type) => (
                 <button
                   type="button"
                   key={type}
                   onClick={() => setFormData({ ...formData, transaction_type: type })}
-                  className={`py-2 rounded-lg font-bold text-center transition-all ${
+                  className={`py-2 text-[10px] sm:text-xs rounded-lg font-bold text-center transition-all ${
                     formData.transaction_type === type
-                      ? type === 'BUY' || type === 'SIP'
+                      ? type === 'BUY' || type === 'SIP' || type === 'INITIAL'
                         ? 'bg-emerald-600 text-white shadow-md'
                         : type === 'SELL'
                         ? 'bg-rose-600 text-white shadow-md'
@@ -230,7 +261,7 @@ export const RecordTradeModal: React.FC<RecordTradeModalProps> = ({
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  {type}
+                  {type === 'INITIAL' ? 'INITIAL DATA' : type}
                 </button>
               ))}
             </div>
@@ -394,48 +425,52 @@ export const RecordTradeModal: React.FC<RecordTradeModalProps> = ({
             </div>
           </div>
 
-          {/* Fees & Taxes */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-400 font-medium mb-1">Brokerage & Fees (₹)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={formData.fees}
-                onChange={(e) => setFormData({ ...formData, fees: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-slate-400 font-medium mb-1">STT & Taxes (₹)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={formData.taxes}
-                onChange={(e) => setFormData({ ...formData, taxes: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none"
-              />
-            </div>
-          </div>
+          {formData.transaction_type !== 'INITIAL' && (
+            <>
+              {/* Fees & Taxes */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 font-medium mb-1">Brokerage & Fees (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.fees}
+                    onChange={(e) => setFormData({ ...formData, fees: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 font-medium mb-1">STT & Taxes (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.taxes}
+                    onChange={(e) => setFormData({ ...formData, taxes: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none"
+                  />
+                </div>
+              </div>
 
-          {/* Invariant Accounting Summary Callout */}
-          <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-400">Gross Trade Value:</span>
-              <span className="font-semibold text-white">{formatINR(gross)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-slate-400">Brokerage & Taxes:</span>
-              <span className="text-slate-300">+{formatINR(fees + taxes)}</span>
-            </div>
-            <div className="flex items-center justify-between pt-1 border-t border-slate-800">
-              <span className="font-bold text-indigo-300">Total Net Cash Impact:</span>
-              <span className="font-extrabold text-sm text-emerald-400">{formatINR(net)}</span>
-            </div>
-            <p className="text-[10px] text-slate-500 pt-1">
-              ✓ <strong>Accounting Guarantee</strong>: This purchase reallocates asset value from cash to investments and will NEVER be counted as a household expense.
-            </p>
-          </div>
+              {/* Invariant Accounting Summary Callout */}
+              <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Gross Trade Value:</span>
+                  <span className="font-semibold text-white">{formatINR(gross)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Brokerage & Taxes:</span>
+                  <span className="text-slate-300">+{formatINR(fees + taxes)}</span>
+                </div>
+                <div className="flex items-center justify-between pt-1 border-t border-slate-800">
+                  <span className="font-bold text-indigo-300">Total Net Cash Impact:</span>
+                  <span className="font-extrabold text-sm text-emerald-400">{formatINR(net)}</span>
+                </div>
+                <p className="text-[10px] text-slate-500 pt-1">
+                  ✓ <strong>Accounting Guarantee</strong>: This purchase reallocates asset value from cash to investments and will NEVER be counted as a household expense.
+                </p>
+              </div>
+            </>
+          )}
 
           {/* Actions */}
           <div className="pt-3 flex justify-end gap-2 border-t border-slate-800">

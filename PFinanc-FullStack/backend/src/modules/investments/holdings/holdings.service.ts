@@ -36,6 +36,34 @@ export interface SecurityHolding {
 }
 
 export class HoldingsService {
+  static async addHoldingSnapshot(householdId: string, userId: string, data: any) {
+    const {
+      investment_account_id,
+      instrument_id,
+      quantity,
+      average_cost,
+      current_price,
+      as_of_date
+    } = data;
+
+    const invested_amount = parseFloat(quantity) * parseFloat(average_cost || 0);
+    const current_value = parseFloat(quantity) * parseFloat(current_price || average_cost || 0);
+
+    const snapshot = await QueryHelper.insert('investment_holdings', {
+      family_id: householdId,
+      user_id: userId,
+      investment_account_id,
+      instrument_id,
+      quantity,
+      average_cost,
+      invested_amount,
+      current_price,
+      current_value,
+      as_of_date: as_of_date || new Date().toISOString().split('T')[0]
+    });
+    return snapshot;
+  }
+
   /**
    * Replay investment transactions with FIFO lot-depletion to calculate holding positions & P&L
    */

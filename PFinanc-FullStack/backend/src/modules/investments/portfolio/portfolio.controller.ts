@@ -45,4 +45,13 @@ export class PortfolioController {
       next(error);
     }
   }
+  static async addSnapshot(req: Request, res: Response, next: NextFunction) {
+    try {
+      const householdId = getHouseholdId(req);
+      const snapshot = await HoldingsService.addHoldingSnapshot(householdId, req.user!.id, req.body);
+      res.json({ success: true, data: snapshot });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

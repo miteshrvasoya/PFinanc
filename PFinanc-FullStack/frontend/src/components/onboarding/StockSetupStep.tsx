@@ -30,6 +30,7 @@ export const StockSetupStep: React.FC<StockSetupStepProps> = ({ onNext, onSkip }
     name: '',
     institution_name: 'Zerodha',
     account_number: '',
+    opening_balance: '',
   });
 
   // Manual Holding Form
@@ -87,7 +88,7 @@ export const StockSetupStep: React.FC<StockSetupStepProps> = ({ onNext, onSkip }
         institution_name: brokerForm.institution_name,
         account_type: 'BROKERAGE',
         account_number: brokerForm.account_number,
-        opening_balance: 0.00,
+        opening_balance: parseFloat(brokerForm.opening_balance) || 0.00,
       });
 
       if (res.success && res.data) {
@@ -159,19 +160,14 @@ export const StockSetupStep: React.FC<StockSetupStepProps> = ({ onNext, onSkip }
       const avgCost = parseFloat(holdingForm.average_cost);
       const curPrice = parseFloat(holdingForm.current_price) || avgCost;
 
-      // Record trade as BUY (which populates holding lot)
-      const res = await api.createInvestmentTransaction({
+      // Add direct snapshot holding record to store current state
+      const res = await api.addHoldingSnapshot({
         investment_account_id: selectedAccount.id,
-        security_id: selectedSec.id,
-        transaction_type: 'BUY',
-        transaction_date: holdingForm.as_of_date,
+        instrument_id: selectedSec.id,
         quantity: qty,
-        price_per_unit: avgCost,
-        gross_amount: qty * avgCost,
-        fees: 0,
-        taxes: 0,
-        net_amount: qty * avgCost,
-        notes: 'Initial Opening Position',
+        average_cost: avgCost,
+        current_price: curPrice,
+        as_of_date: holdingForm.as_of_date,
       });
 
       if (res.success) {
@@ -276,6 +272,18 @@ export const StockSetupStep: React.FC<StockSetupStepProps> = ({ onNext, onSkip }
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-slate-300 font-medium mb-1">Uninvested Cash Balance (₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                placeholder="e.g. 5000"
+                value={brokerForm.opening_balance}
+                onChange={(e) => setBrokerForm({ ...brokerForm, opening_balance: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+              />
             </div>
 
             <div className="pt-2 flex justify-end gap-2">

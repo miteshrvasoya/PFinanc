@@ -184,7 +184,7 @@ export const InvestmentsView: React.FC = () => {
               accounts={accounts}
               holdings={holdings}
               onRefresh={loadAllData}
-              onRecordTrade={() => handleOpenTradeModal('BUY')}
+              onRecordTrade={(type = 'BUY') => handleOpenTradeModal(type)}
             />
           )}
 

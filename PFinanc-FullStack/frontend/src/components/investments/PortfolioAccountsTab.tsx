@@ -7,7 +7,7 @@ interface PortfolioAccountsTabProps {
   accounts: any[];
   holdings: any[];
   onRefresh: () => void;
-  onRecordTrade: () => void;
+  onRecordTrade: (type?: string) => void;
 }
 
 export const PortfolioAccountsTab: React.FC<PortfolioAccountsTabProps> = ({ accounts, holdings, onRefresh, onRecordTrade }) => {
@@ -17,6 +17,7 @@ export const PortfolioAccountsTab: React.FC<PortfolioAccountsTabProps> = ({ acco
     institution_name: '',
     account_type: 'BROKERAGE',
     account_number: '',
+    opening_balance: '',
   });
 
   const getAccountIcon = (type: string) => {
@@ -36,12 +37,12 @@ export const PortfolioAccountsTab: React.FC<PortfolioAccountsTabProps> = ({ acco
         institution_name: formData.institution_name,
         account_type: formData.account_type,
         account_number: formData.account_number,
-        opening_balance: 0,
+        opening_balance: parseFloat(formData.opening_balance) || 0,
       });
 
       if (res.success) {
         setShowAddForm(false);
-        setFormData({ name: '', institution_name: '', account_type: 'BROKERAGE', account_number: '' });
+        setFormData({ name: '', institution_name: '', account_type: 'BROKERAGE', account_number: '', opening_balance: '' });
         onRefresh();
       } else {
         alert(res.error?.message || 'Failed to create account');
@@ -110,6 +111,17 @@ export const PortfolioAccountsTab: React.FC<PortfolioAccountsTabProps> = ({ acco
                   placeholder="e.g. 12345678"
                   value={formData.account_number}
                   onChange={(e) => setFormData({ ...formData, account_number: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">Opening Cash Balance (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="e.g. 5000"
+                  value={formData.opening_balance}
+                  onChange={(e) => setFormData({ ...formData, opening_balance: e.target.value })}
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none"
                 />
               </div>
@@ -195,12 +207,20 @@ export const PortfolioAccountsTab: React.FC<PortfolioAccountsTabProps> = ({ acco
               
               <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between mt-4">
                 <span className="text-[11px] font-semibold text-slate-400">Manage Assets</span>
-                <button
-                  onClick={onRecordTrade}
-                  className="text-xs font-bold text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  + Add Trade/SIP
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => onRecordTrade('INITIAL')}
+                    className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-1.5 rounded-lg transition-colors border border-emerald-500/20"
+                  >
+                    + Initial Data
+                  </button>
+                  <button
+                    onClick={() => onRecordTrade('BUY')}
+                    className="text-xs font-bold text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    + Add Trade/SIP
+                  </button>
+                </div>
               </div>
             </div>
           ))}

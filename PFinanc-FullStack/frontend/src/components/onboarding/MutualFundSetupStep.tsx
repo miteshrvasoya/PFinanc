@@ -171,18 +171,13 @@ export const MutualFundSetupStep: React.FC<MutualFundSetupStepProps> = ({ onNext
         txNotes += ` | Step-up: ${holdingForm.step_up_percentage}% Yearly`;
       }
 
-      const res = await api.createInvestmentTransaction({
+      const res = await api.addHoldingSnapshot({
         investment_account_id: selectedAccount.id,
-        security_id: selectedSec.id,
-        transaction_type: isSip ? 'SIP' : 'BUY',
-        transaction_date: holdingForm.as_of_date,
+        instrument_id: selectedSec.id,
         quantity: units,
-        price_per_unit: avgNav,
-        gross_amount: units * avgNav,
-        fees: 0,
-        taxes: 0,
-        net_amount: units * avgNav,
-        notes: txNotes,
+        average_cost: avgNav,
+        current_price: curNav,
+        as_of_date: holdingForm.as_of_date,
       });
 
       if (res.success) {
