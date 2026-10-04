@@ -53,6 +53,8 @@ export const AccountsView: React.FC = () => {
     fetchAccounts();
   }, []);
 
+  const bankAccounts = accounts.filter(a => ['BANK', 'CASH', 'WALLET', 'CREDIT_CARD'].includes(a.account_type));
+
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -120,7 +122,7 @@ export const AccountsView: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-800/80">
         <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">Financial Accounts</h2>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Bank Accounts</h2>
           <p className="text-sm text-slate-400">Manage bank accounts, cash reserves, credit cards, and wallets</p>
         </div>
         <button
@@ -138,17 +140,17 @@ export const AccountsView: React.FC = () => {
           <RefreshCw className="w-6 h-6 animate-spin text-indigo-500 mr-2" />
           <span>Loading Accounts...</span>
         </div>
-      ) : accounts.length === 0 ? (
+      ) : bankAccounts.length === 0 ? (
         <EmptyState
           icon={Wallet}
-          title="No Financial Accounts Configured"
+          title="No Bank Accounts Configured"
           description="Add your savings accounts, cash reserves, credit cards, or digital wallets to establish your financial baseline."
           actionLabel="Add Your First Account"
           onAction={() => setShowAddModal(true)}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {accounts.map((acc) => (
+          {bankAccounts.map((acc) => (
             <div
               key={acc.id}
               className={`glass-panel rounded-2xl p-5 border transition-all ${

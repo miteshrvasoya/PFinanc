@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { formatINR, formatDate } from '../../lib/formatters';
 import { PortfolioDashboard } from './PortfolioDashboard';
+import { PortfolioAccountsTab } from './PortfolioAccountsTab';
 import { HoldingsTable } from './HoldingsTable';
 import { SecurityDetailModal } from './SecurityDetailModal';
 import { RecordTradeModal } from './RecordTradeModal';
@@ -19,9 +20,10 @@ import {
   UploadCloud,
   RefreshCw,
   Search,
+  Wallet,
 } from 'lucide-react';
 
-export type InvestmentSubTab = 'overview' | 'holdings' | 'fixed_deposits' | 'retirement' | 'transactions';
+export type InvestmentSubTab = 'overview' | 'accounts' | 'holdings' | 'fixed_deposits' | 'retirement' | 'transactions';
 
 export const InvestmentsView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<InvestmentSubTab>('overview');
@@ -132,6 +134,7 @@ export const InvestmentsView: React.FC = () => {
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-800/60 text-xs font-semibold">
         {[
           { id: 'overview', label: 'Portfolio Overview', icon: PieChart },
+          { id: 'accounts', label: 'Investment Accounts', icon: Wallet },
           { id: 'holdings', label: `Holdings (${holdings.length})`, icon: Layers },
           { id: 'fixed_deposits', label: 'Fixed Deposits', icon: Building },
           { id: 'retirement', label: 'Retirement (EPF/PPF)', icon: ShieldCheck },
@@ -171,6 +174,14 @@ export const InvestmentsView: React.FC = () => {
               onRecordTrade={() => handleOpenTradeModal('BUY')}
               onNavigateToTab={(tab: string) => setActiveTab(tab as InvestmentSubTab)}
               onSelectHolding={setSelectedHoldingDetail}
+            />
+          )}
+
+          {activeTab === 'accounts' && (
+            <PortfolioAccountsTab
+              accounts={accounts}
+              onRefresh={loadAllData}
+              onRecordTrade={() => handleOpenTradeModal('BUY')}
             />
           )}
 

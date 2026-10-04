@@ -106,6 +106,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
     loadData();
   };
 
+  const keepModalOpenRef = React.useRef(false);
+
   const handleCreateTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -116,7 +118,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
       });
 
       if (res.success) {
-        setShowAddModal(false);
+        if (!keepModalOpenRef.current) {
+          setShowAddModal(false);
+        }
         setFormData({
           account_id: accounts[0]?.id || '',
           category_id: '',
@@ -491,6 +495,14 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
                 </button>
                 <button
                   type="submit"
+                  onClick={() => keepModalOpenRef.current = true}
+                  className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-semibold"
+                >
+                  Save & Add Another
+                </button>
+                <button
+                  type="submit"
+                  onClick={() => keepModalOpenRef.current = false}
                   className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-md shadow-indigo-500/20"
                 >
                   Save Transaction

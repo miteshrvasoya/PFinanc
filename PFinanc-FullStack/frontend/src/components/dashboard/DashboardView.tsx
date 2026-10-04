@@ -61,12 +61,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToTab })
   const cashPosition = data?.cashPosition || { bankTotal: 0, cashTotal: 0, walletTotal: 0, creditCardTotal: 0, accounts: [] };
   const recentTransactions = data?.recentTransactions || [];
   
-  // Mock data for wireframe purposes
-  const pendingActions = [
-    { id: 1, title: '3 transactions waiting for approval', type: 'approval' },
-    { id: 2, title: 'EPF contribution reminder', type: 'reminder' }
-  ];
-  const investments = { totalValue: 450000, todayChange: 2500, percentChange: 0.5 };
+  const pendingActions: any[] = [];
+  const investments = { totalValue: 0, todayChange: 0, percentChange: 0 };
 
   return (
     <div className="space-y-6 pb-6">

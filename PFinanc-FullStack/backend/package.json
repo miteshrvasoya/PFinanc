@@ -8,6 +8,7 @@
     "start": "node dist/app.js",
     "dev": "tsx watch src/app.ts",
     "migrate": "tsx src/database/migrate.ts",
+    "migrate:prod": "node dist/database/migrate.js",
     "seed": "tsx src/database/seed.ts",
     "seed:dev": "tsx src/database/seed.ts",
     "seed:system": "tsx src/database/seed-system.ts",

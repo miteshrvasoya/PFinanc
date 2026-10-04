@@ -131,6 +131,8 @@ export const RecordTradeModal: React.FC<RecordTradeModalProps> = ({
     net = Math.max(0, (parseFloat(formData.quantity) || gross) - taxes);
   }
 
+  const keepModalOpenRef = React.useRef(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.investment_account_id) {
@@ -164,7 +166,22 @@ export const RecordTradeModal: React.FC<RecordTradeModalProps> = ({
       const res = await api.createInvestmentTransaction(payload);
       if (res.success) {
         onSuccess();
-        onClose();
+        if (!keepModalOpenRef.current) {
+          onClose();
+        } else {
+          // Reset form fields but keep some context
+          setFormData({
+            ...formData,
+            quantity: '',
+            price_per_unit: '',
+            fees: '0',
+            taxes: '0',
+            reference: '',
+            notes: '',
+          });
+          setSearchQuery('');
+          setSelectedSecurity(null);
+        }
       } else {
         alert(res.error?.message || 'Failed to record investment trade');
       }
@@ -432,6 +449,15 @@ export const RecordTradeModal: React.FC<RecordTradeModalProps> = ({
             <button
               type="submit"
               disabled={submitting}
+              onClick={() => keepModalOpenRef.current = true}
+              className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-semibold"
+            >
+              Save & Add Another
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              onClick={() => keepModalOpenRef.current = false}
               className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold shadow-md shadow-indigo-500/20"
             >
               {submitting ? 'Recording Trade...' : `Confirm ${formData.transaction_type}`}

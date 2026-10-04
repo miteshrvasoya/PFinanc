@@ -25,18 +25,14 @@ export const Sidebar: React.FC<{ onQuickAction: () => void }> = ({ onQuickAction
   const primaryNavItems = [
     { id: 'dashboard', href: '/', label: 'Home', icon: <LayoutDashboard className="w-5 h-5" /> },
     { id: 'transactions', href: '/transactions', label: 'Transactions', icon: <Receipt className="w-5 h-5" /> },
-    { id: 'investments', href: '/investments', label: 'Investments', icon: <TrendingUp className="w-5 h-5" /> },
-    { id: 'accounts', href: '/accounts', label: 'Accounts', icon: <Wallet className="w-5 h-5" /> },
+    { id: 'investments', href: '/investments', label: 'Portfolio', icon: <TrendingUp className="w-5 h-5" /> },
+    { id: 'accounts', href: '/accounts', label: 'Bank Accounts', icon: <Wallet className="w-5 h-5" /> },
   ];
 
   const secondaryNavItems = [
     { id: 'family', href: '/family', label: 'Family', icon: <Users className="w-5 h-5" /> },
     { id: 'analytics', href: '/analytics', label: 'Analytics', icon: <BarChart3 className="w-5 h-5" /> },
     { id: 'imports', href: '/imports', label: 'Imports', icon: <FileSpreadsheet className="w-5 h-5" /> },
-    // Mock links for wireframe purposes
-    { id: 'goals', href: '#', label: 'Goals', icon: <Target className="w-5 h-5" /> },
-    { id: 'budgets', href: '#', label: 'Budgets', icon: <PiggyBank className="w-5 h-5" /> },
-    { id: 'settings', href: '#', label: 'Settings', icon: <Settings className="w-5 h-5" /> },
   ];
 
   const renderNav = (items: typeof primaryNavItems) => (

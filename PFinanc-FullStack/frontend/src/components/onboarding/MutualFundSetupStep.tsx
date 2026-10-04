@@ -21,7 +21,7 @@ export const MutualFundSetupStep: React.FC<MutualFundSetupStepProps> = ({ onNext
 
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<any>(null);
-  const [subAction, setSubAction] = useState<'CHOICE' | 'HOLDING' | null>(null);
+  const [subAction, setSubAction] = useState<'CHOICE' | 'HOLDING' | 'CREATE_SECURITY' | null>(null);
 
   // MF Account Form
   const [accountForm, setAccountForm] = useState({
@@ -39,6 +39,17 @@ export const MutualFundSetupStep: React.FC<MutualFundSetupStepProps> = ({ onNext
     average_nav: '',
     current_nav: '',
     as_of_date: new Date().toISOString().split('T')[0],
+    investment_type: 'SIP', // SIP or LUMPSUM
+    sip_amount: '',
+    step_up_percentage: '',
+  });
+
+  // Custom Security Form
+  const [customSecForm, setCustomSecForm] = useState({
+    symbol: '',
+    name: '',
+    isin: '',
+    latest_price: '',
   });
 
   useEffect(() => {
@@ -102,10 +113,40 @@ export const MutualFundSetupStep: React.FC<MutualFundSetupStepProps> = ({ onNext
     try {
       const res = await api.searchSecurities(q);
       if (res.success && res.data) {
-        setSearchResults(res.data);
+        setSearchResults(res.data.filter((s: any) => s.security_type === 'MUTUAL_FUND' || !s.security_type));
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleCreateCustomSecurity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await api.createSecurity({
+        symbol: customSecForm.symbol.toUpperCase(),
+        name: customSecForm.name,
+        security_type: 'MUTUAL_FUND',
+        latest_price: parseFloat(customSecForm.latest_price) || 0,
+      });
+
+      if (res.success && res.data) {
+        setSelectedSec(res.data);
+        setSearchQuery(res.data.name);
+        if (res.data.latest_price) {
+          setHoldingForm((prev) => ({
+            ...prev,
+            average_nav: String(res.data.latest_price),
+            current_nav: String(res.data.latest_price),
+          }));
+        }
+        setSubAction('HOLDING');
+        setCustomSecForm({ symbol: '', name: '', isin: '', latest_price: '' });
+      } else {
+        alert(res.error?.message || 'Failed to create MF scheme');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error creating scheme');
     }
   };
 
@@ -120,11 +161,20 @@ export const MutualFundSetupStep: React.FC<MutualFundSetupStepProps> = ({ onNext
       const units = parseFloat(holdingForm.units);
       const avgNav = parseFloat(holdingForm.average_nav);
       const curNav = parseFloat(holdingForm.current_nav) || avgNav;
+      
+      const isSip = holdingForm.investment_type === 'SIP';
+      let txNotes = isSip 
+        ? `SIP Setup: Monthly ₹${holdingForm.sip_amount}` 
+        : `Lumpsum Setup`;
+
+      if (isSip && holdingForm.step_up_percentage) {
+        txNotes += ` | Step-up: ${holdingForm.step_up_percentage}% Yearly`;
+      }
 
       const res = await api.createInvestmentTransaction({
         investment_account_id: selectedAccount.id,
         security_id: selectedSec.id,
-        transaction_type: 'SIP',
+        transaction_type: isSip ? 'SIP' : 'BUY',
         transaction_date: holdingForm.as_of_date,
         quantity: units,
         price_per_unit: avgNav,
@@ -132,7 +182,7 @@ export const MutualFundSetupStep: React.FC<MutualFundSetupStepProps> = ({ onNext
         fees: 0,
         taxes: 0,
         net_amount: units * avgNav,
-        notes: 'Initial Mutual Fund Position',
+        notes: txNotes,
       });
 
       if (res.success) {
@@ -142,7 +192,15 @@ export const MutualFundSetupStep: React.FC<MutualFundSetupStepProps> = ({ onNext
         setSubAction(null);
         setSelectedSec(null);
         setSearchQuery('');
-        setHoldingForm({ units: '', average_nav: '', current_nav: '', as_of_date: new Date().toISOString().split('T')[0] });
+        setHoldingForm({ 
+          units: '', 
+          average_nav: '', 
+          current_nav: '', 
+          as_of_date: new Date().toISOString().split('T')[0],
+          investment_type: 'SIP',
+          sip_amount: '',
+          step_up_percentage: '',
+        });
         loadData();
       } else {
         alert(res.error?.message || 'Failed to save mutual fund');
@@ -252,6 +310,88 @@ export const MutualFundSetupStep: React.FC<MutualFundSetupStepProps> = ({ onNext
         </div>
       )}
 
+      {/* Create Custom Security Form */}
+      {subAction === 'CREATE_SECURITY' && selectedAccount && (
+        <div className="glass-panel p-6 rounded-2xl border border-emerald-500/30 space-y-4 max-w-lg">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <h4 className="font-bold text-white text-sm">Add Custom Scheme Manually</h4>
+            <button onClick={() => setSubAction('HOLDING')} className="text-slate-400 hover:text-white">
+              Cancel
+            </button>
+          </div>
+
+          <form onSubmit={handleCreateCustomSecurity} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">Fund Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Parag Parikh Flexi Cap"
+                  value={customSecForm.name}
+                  onChange={(e) => setCustomSecForm({ ...customSecForm, name: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">Fund Code / Shortname *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. PPFAS"
+                  value={customSecForm.symbol}
+                  onChange={(e) => setCustomSecForm({ ...customSecForm, symbol: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500 uppercase"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">ISIN (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. INF346A01034"
+                  value={customSecForm.isin}
+                  onChange={(e) => setCustomSecForm({ ...customSecForm, isin: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">Current NAV (₹) *</label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  required
+                  placeholder="65.4021"
+                  value={customSecForm.latest_price}
+                  onChange={(e) => setCustomSecForm({ ...customSecForm, latest_price: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSubAction('HOLDING')}
+                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-semibold"
+              >
+                Back to Search
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+              >
+                Add & Select
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Manual MF Holding Form */}
       {subAction === 'HOLDING' && selectedAccount && (
         <div className="glass-panel p-6 rounded-2xl border border-emerald-500/30 space-y-4 max-w-lg">
@@ -278,7 +418,7 @@ export const MutualFundSetupStep: React.FC<MutualFundSetupStepProps> = ({ onNext
                 />
               </div>
 
-              {searchResults.length > 0 && (
+              {searchResults.length > 0 ? (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-h-40 overflow-y-auto z-20 divide-y divide-slate-800">
                   {searchResults.map((sec) => (
                     <div
@@ -306,8 +446,35 @@ export const MutualFundSetupStep: React.FC<MutualFundSetupStepProps> = ({ onNext
                       )}
                     </div>
                   ))}
+                  <div className="p-2 bg-slate-900/50 text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSubAction('CREATE_SECURITY');
+                        setCustomSecForm((prev) => ({ ...prev, name: searchQuery, symbol: searchQuery.substring(0, 10).toUpperCase().replace(/\s/g, '') }));
+                        setSearchResults([]);
+                      }}
+                      className="text-[11px] text-emerald-400 font-bold hover:text-emerald-300 w-full"
+                    >
+                      + Fund Not Found? Add Custom Scheme
+                    </button>
+                  </div>
                 </div>
-              )}
+              ) : searchQuery.length >= 2 ? (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-3 z-20 text-center">
+                  <p className="text-xs text-slate-400 mb-2">No matching funds found.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubAction('CREATE_SECURITY');
+                      setCustomSecForm((prev) => ({ ...prev, name: searchQuery, symbol: searchQuery.substring(0, 10).toUpperCase().replace(/\s/g, '') }));
+                    }}
+                    className="w-full p-2 text-xs font-bold text-emerald-400 bg-emerald-500/10 rounded-lg hover:bg-emerald-500/20"
+                  >
+                    + Add Custom Scheme Manually
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             {selectedSec && (
@@ -326,7 +493,7 @@ export const MutualFundSetupStep: React.FC<MutualFundSetupStepProps> = ({ onNext
                   placeholder="42.3011"
                   value={holdingForm.units}
                   onChange={(e) => setHoldingForm({ ...holdingForm, units: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
@@ -339,10 +506,54 @@ export const MutualFundSetupStep: React.FC<MutualFundSetupStepProps> = ({ onNext
                   placeholder="55.00"
                   value={holdingForm.average_nav}
                   onChange={(e) => setHoldingForm({ ...holdingForm, average_nav: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">Investment Type</label>
+                <select
+                  value={holdingForm.investment_type}
+                  onChange={(e) => setHoldingForm({ ...holdingForm, investment_type: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="SIP">SIP (Monthly/Recurring)</option>
+                  <option value="LUMPSUM">Lumpsum (One-time)</option>
+                </select>
+              </div>
+
+              {holdingForm.investment_type === 'SIP' && (
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">SIP Amount (₹/month)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g. 5000"
+                    value={holdingForm.sip_amount}
+                    onChange={(e) => setHoldingForm({ ...holdingForm, sip_amount: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              )}
+            </div>
+
+            {holdingForm.investment_type === 'SIP' && (
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Annual Step-up Increase (%) - Optional</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    placeholder="e.g. 10 for 10% increase every year"
+                    value={holdingForm.step_up_percentage}
+                    onChange={(e) => setHoldingForm({ ...holdingForm, step_up_percentage: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="pt-2 flex justify-end gap-2">
               <button

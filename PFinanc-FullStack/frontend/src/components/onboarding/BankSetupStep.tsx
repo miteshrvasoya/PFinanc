@@ -130,6 +130,7 @@ export const BankSetupStep: React.FC<BankSetupStepProps> = ({ onNext, onSkip }) 
         const res = await api.previewCsv(activeCreatedAccount.id, file);
         if (res.success && res.data) {
           setPreviewData(res.data);
+          setSubAction('CSV');
         } else {
           alert(res.error?.message || 'Failed to preview CSV statement');
         }
@@ -305,7 +306,7 @@ export const BankSetupStep: React.FC<BankSetupStepProps> = ({ onNext, onSkip }) 
             <button
               type="button"
               onClick={() => {
-                setSubAction('CSV');
+                // Don't setSubAction('CSV') yet, wait for file change
                 fileInputRef.current?.click();
               }}
               className="p-4 rounded-xl bg-slate-900 border border-slate-700 hover:border-indigo-500 text-left space-y-2 group transition-all"

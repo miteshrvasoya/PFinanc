@@ -1,51 +1,69 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { ShieldCheck, ArrowRight, UserCheck, Lock, Mail, User, Sparkles } from 'lucide-react';
+import { ShieldCheck, ArrowRight, UserCheck, Lock, Mail, User, Sparkles, CheckCircle, AlertCircle } from 'lucide-react';
 
 export const LoginView: React.FC = () => {
-  const { login, register, switchDemoUser } = useAuth();
+  const { login, register } = useAuth();
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [popup, setPopup] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const showPopup = (message: string, type: 'success' | 'error') => {
+    setPopup({ message, type });
+    setTimeout(() => {
+      setPopup(null);
+    }, 4000);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    setPopup(null);
     setLoading(true);
 
     try {
       if (isRegister) {
         const result = await register(email, password, name);
         if (!result.success) {
-          setError(result.error || 'Registration failed. Please check your credentials.');
+          showPopup(result.error || 'Registration failed. Please check your credentials.', 'error');
+        } else {
+          showPopup('Registration successful! Welcome to PFinanc.', 'success');
         }
       } else {
         const result = await login(email, password);
         if (!result.success) {
-          setError(result.error || 'Invalid email or password.');
+          showPopup(result.error || 'Invalid email or password.', 'error');
+        } else {
+          showPopup('Signed in successfully!', 'success');
         }
       }
     } catch (err: any) {
-      setError(err.message || 'An authentication error occurred');
+      showPopup(err.message || 'An authentication error occurred', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const demoAccounts = [
-    { name: 'Mitesh Vasoya', email: 'mitesh@pfinanc.local', role: 'Household Owner', color: 'border-indigo-500/40 bg-indigo-500/10' },
-    { name: 'Father Vasoya', email: 'father@pfinanc.local', role: 'Household Admin', color: 'border-sky-500/40 bg-sky-500/10' },
-    { name: 'Mother Vasoya', email: 'mother@pfinanc.local', role: 'Household Member', color: 'border-emerald-500/40 bg-emerald-500/10' },
-  ];
 
   return (
     <div className="min-h-screen bg-[#090d16] flex items-center justify-center p-4 relative overflow-hidden">
       {/* Background Glows */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
+
+      {/* Toast Notification Popup */}
+      {popup && (
+        <div className={`absolute top-6 left-1/2 -translate-x-1/2 px-4 py-3 rounded-xl border flex items-center gap-3 shadow-2xl z-50 animate-in fade-in slide-in-from-top-5 duration-300 ${
+          popup.type === 'success' 
+            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
+            : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+        }`}>
+          {popup.type === 'success' ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+          <span className="text-sm font-semibold">{popup.message}</span>
+        </div>
+      )}
 
       <div className="w-full max-w-md space-y-6 relative z-10">
         {/* Brand Header */}
@@ -57,33 +75,6 @@ export const LoginView: React.FC = () => {
           <p className="text-sm text-slate-400">Self-Hosted Personal & Family Finance Ledger</p>
         </div>
 
-        {/* Fast 1-Click Demo Login Personas */}
-        <div className="glass-panel rounded-2xl p-5 border border-slate-800 space-y-3">
-          <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-400">
-            <Sparkles className="w-4 h-4" />
-            <span>Fast 1-Click Family Personas</span>
-          </div>
-
-          <div className="space-y-2">
-            {demoAccounts.map((acc) => (
-              <button
-                key={acc.email}
-                onClick={() => switchDemoUser(acc.email)}
-                className={`w-full p-3 rounded-xl border flex items-center justify-between text-left transition-all hover:scale-[1.01] ${acc.color}`}
-              >
-                <div>
-                  <p className="font-bold text-white text-xs">{acc.name}</p>
-                  <p className="text-[10px] text-slate-400">{acc.role} • {acc.email}</p>
-                </div>
-                <div className="flex items-center gap-1 text-xs text-indigo-300 font-semibold">
-                  <span>Sign In</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Regular Login / Register Form */}
         <div className="glass-panel rounded-2xl p-6 border border-slate-800 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -93,19 +84,13 @@ export const LoginView: React.FC = () => {
             <button
               onClick={() => {
                 setIsRegister(!isRegister);
-                setError(null);
+                setPopup(null);
               }}
               className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold"
             >
               {isRegister ? 'Already have an account?' : 'Register new user'}
             </button>
           </div>
-
-          {error && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium">
-              {error}
-            </div>
-          )}
 
           <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
             {isRegister && (

@@ -23,7 +23,7 @@ export const StockSetupStep: React.FC<StockSetupStepProps> = ({ onNext, onSkip }
 
   const [showAddBroker, setShowAddBroker] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<any>(null);
-  const [subAction, setSubAction] = useState<'CHOICE' | 'HOLDING' | null>(null);
+  const [subAction, setSubAction] = useState<'CHOICE' | 'HOLDING' | 'CREATE_SECURITY' | null>(null);
 
   // Broker Form
   const [brokerForm, setBrokerForm] = useState({
@@ -41,6 +41,14 @@ export const StockSetupStep: React.FC<StockSetupStepProps> = ({ onNext, onSkip }
     average_cost: '',
     current_price: '',
     as_of_date: new Date().toISOString().split('T')[0],
+  });
+
+  // Custom Security Form
+  const [customSecForm, setCustomSecForm] = useState({
+    symbol: '',
+    name: '',
+    isin: '',
+    latest_price: '',
   });
 
   useEffect(() => {
@@ -106,6 +114,36 @@ export const StockSetupStep: React.FC<StockSetupStepProps> = ({ onNext, onSkip }
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleCreateCustomSecurity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await api.createSecurity({
+        symbol: customSecForm.symbol.toUpperCase(),
+        name: customSecForm.name,
+        security_type: 'STOCK',
+        latest_price: parseFloat(customSecForm.latest_price) || 0,
+      });
+
+      if (res.success && res.data) {
+        setSelectedSec(res.data);
+        setSearchQuery(res.data.name);
+        if (res.data.latest_price) {
+          setHoldingForm((prev) => ({
+            ...prev,
+            average_cost: String(res.data.latest_price),
+            current_price: String(res.data.latest_price),
+          }));
+        }
+        setSubAction('HOLDING');
+        setCustomSecForm({ symbol: '', name: '', isin: '', latest_price: '' });
+      } else {
+        alert(res.error?.message || 'Failed to create security');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error creating security');
     }
   };
 
@@ -259,6 +297,88 @@ export const StockSetupStep: React.FC<StockSetupStepProps> = ({ onNext, onSkip }
         </div>
       )}
 
+      {/* Create Custom Security Form */}
+      {subAction === 'CREATE_SECURITY' && selectedAccount && (
+        <div className="glass-panel p-6 rounded-2xl border border-indigo-500/30 space-y-4 max-w-lg">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <h4 className="font-bold text-white text-sm">Add Custom Stock Manually</h4>
+            <button onClick={() => setSubAction('HOLDING')} className="text-slate-400 hover:text-white">
+              Cancel
+            </button>
+          </div>
+
+          <form onSubmit={handleCreateCustomSecurity} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">Company / Stock Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Tata Motors"
+                  value={customSecForm.name}
+                  onChange={(e) => setCustomSecForm({ ...customSecForm, name: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">Stock Code (NSE/BSE) *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. TATAMOTORS"
+                  value={customSecForm.symbol}
+                  onChange={(e) => setCustomSecForm({ ...customSecForm, symbol: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 uppercase"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">ISIN (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. INE155A01022"
+                  value={customSecForm.isin}
+                  onChange={(e) => setCustomSecForm({ ...customSecForm, isin: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">Current Price (₹) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  placeholder="950.50"
+                  value={customSecForm.latest_price}
+                  onChange={(e) => setCustomSecForm({ ...customSecForm, latest_price: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSubAction('HOLDING')}
+                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-semibold"
+              >
+                Back to Search
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold"
+              >
+                Add & Select
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Manual Stock Holdings Form */}
       {subAction === 'HOLDING' && selectedAccount && (
         <div className="glass-panel p-6 rounded-2xl border border-indigo-500/30 space-y-4 max-w-lg">
@@ -286,7 +406,7 @@ export const StockSetupStep: React.FC<StockSetupStepProps> = ({ onNext, onSkip }
                 />
               </div>
 
-              {searchResults.length > 0 && (
+              {searchResults.length > 0 ? (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-h-40 overflow-y-auto z-20 divide-y divide-slate-800">
                   {searchResults.map((sec) => (
                     <div
@@ -314,8 +434,35 @@ export const StockSetupStep: React.FC<StockSetupStepProps> = ({ onNext, onSkip }
                       )}
                     </div>
                   ))}
+                  <div className="p-2 bg-slate-900/50 text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSubAction('CREATE_SECURITY');
+                        setCustomSecForm((prev) => ({ ...prev, name: searchQuery, symbol: searchQuery.substring(0, 10).toUpperCase().replace(/\s/g, '') }));
+                        setSearchResults([]);
+                      }}
+                      className="text-[11px] text-indigo-400 font-bold hover:text-indigo-300 w-full"
+                    >
+                      + Stock Not Found? Add Custom Stock
+                    </button>
+                  </div>
                 </div>
-              )}
+              ) : searchQuery.length >= 2 ? (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-3 z-20 text-center">
+                  <p className="text-xs text-slate-400 mb-2">No matching stocks found.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubAction('CREATE_SECURITY');
+                      setCustomSecForm((prev) => ({ ...prev, name: searchQuery, symbol: searchQuery.substring(0, 10).toUpperCase().replace(/\s/g, '') }));
+                    }}
+                    className="w-full p-2 text-xs font-bold text-indigo-400 bg-indigo-500/10 rounded-lg hover:bg-indigo-500/20"
+                  >
+                    + Add Custom Stock Manually
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             {selectedSec && (
