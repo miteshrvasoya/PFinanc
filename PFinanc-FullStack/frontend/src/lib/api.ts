@@ -212,6 +212,29 @@ class ApiClient {
     });
   }
 
+  // Budgets
+  async getBudgets() {
+    return this.request('/budgets');
+  }
+
+  // Loans
+  async getLoans() {
+    return this.request('/loans');
+  }
+
+  // Rent
+  async getRent() {
+    return this.request('/rent');
+  }
+
+  // Splits
+  async splitTransaction(transactionId: string, splits: any[]) {
+    return this.request(`/splits/${transactionId}`, {
+      method: 'POST',
+      body: JSON.stringify({ splits }),
+    });
+  }
+
   // Categories
   async getCategories() {
     return this.request('/categories');
@@ -557,6 +580,10 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ include_duplicates: includeDuplicates }),
     });
+  }
+
+  async previewInvestmentImport(accountId: string, filename: string, csvContent: string) {
+    return this.createInvestmentImport(accountId, 'STOCK', 'TRANSACTIONS', filename, csvContent);
   }
 
   // Statement Pipeline (Dedicated Parsing & AI Analysis)

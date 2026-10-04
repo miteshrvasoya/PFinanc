@@ -24,6 +24,7 @@ export const Sidebar: React.FC<{ onQuickAction: () => void }> = ({ onQuickAction
 
   const primaryNavItems = [
     { id: 'dashboard', href: '/', label: 'Home', icon: <LayoutDashboard className="w-5 h-5" /> },
+    { id: 'finance', href: '/finance', label: 'Finance', icon: <Target className="w-5 h-5" /> },
     { id: 'transactions', href: '/transactions', label: 'Transactions', icon: <Receipt className="w-5 h-5" /> },
     { id: 'investments', href: '/investments', label: 'Portfolio', icon: <TrendingUp className="w-5 h-5" /> },
     { id: 'accounts', href: '/accounts', label: 'Bank Accounts', icon: <Wallet className="w-5 h-5" /> },

@@ -111,6 +111,8 @@ export class TransactionsService {
         t.source_reference,
         t.external_reference,
         t.notes,
+        t.linked_entity_type,
+        t.linked_entity_id,
         t.created_at,
         t.updated_at
       FROM transactions t
@@ -160,6 +162,8 @@ export class TransactionsService {
         t.source_reference,
         t.external_reference,
         t.notes,
+        t.linked_entity_type,
+        t.linked_entity_id,
         t.created_at,
         t.updated_at
       FROM transactions t
@@ -194,6 +198,8 @@ export class TransactionsService {
       source_reference: data.source_reference || null,
       external_reference: data.external_reference || null,
       notes: data.notes || null,
+      linked_entity_type: data.linked_entity_type || null,
+      linked_entity_id: data.linked_entity_id || null,
     });
 
     await logAudit(householdId, currentUserId, 'TRANSACTION', transaction.id, 'CREATE', null, transaction);

@@ -23,6 +23,10 @@ import { statementImportsRoutes } from './modules/statement-imports/statementImp
 import { aiAdvisorRouter } from './modules/ai-advisor/aiAdvisor.routes.js';
 import { automationRouter } from './modules/automation/automation.routes.js';
 import vaultRoutes from './modules/vault/vault.routes.js';
+import { loansRouter } from './modules/loans/loans.routes.js';
+import { budgetsRouter } from './modules/budgets/budgets.routes.js';
+import { rentRouter } from './modules/rent/rent.routes.js';
+import { splitsRouter } from './modules/splits/splits.routes.js';
 import { AIAdvisorScheduler } from './modules/ai-advisor/aiAdvisor.scheduler.js';
 
 export const app = express();
@@ -66,6 +70,10 @@ app.use('/api/invitations', invitationsRoutes);
 app.use('/api/ai-advisor', aiAdvisorRouter);
 app.use('/api/automation', automationRouter);
 app.use('/api/vault', vaultRoutes);
+app.use('/api/loans', loansRouter);
+app.use('/api/budgets', budgetsRouter);
+app.use('/api/rent', rentRouter);
+app.use('/api/splits', splitsRouter);
 
 // Error Handler
 app.use(errorHandler);

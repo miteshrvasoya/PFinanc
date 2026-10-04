@@ -13,6 +13,8 @@ import {
   RotateCcw,
   RefreshCw,
   X,
+  Split,
+  Link as LinkIcon,
 } from 'lucide-react';
 
 interface TransactionsViewProps {
@@ -20,7 +22,12 @@ interface TransactionsViewProps {
   onClearInitialAction?: () => void;
 }
 
+import { ClassifyTransactionModal } from './ClassifyTransactionModal';
+import { SplitTransactionModal } from './SplitTransactionModal';
+
 export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialAction, onClearInitialAction }) => {
+  const [transactionToClassify, setTransactionToClassify] = useState<any>(null);
+  const [transactionToSplit, setTransactionToSplit] = useState<any>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -342,13 +349,29 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
                             </button>
                           )}
                           {tx.status !== 'VOID' && (
-                            <button
-                              onClick={() => handleSetStatus(tx.id, 'void')}
-                              className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/20"
-                              title="Void Transaction"
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </button>
+                            <>
+                              <button
+                                onClick={() => setTransactionToSplit(tx)}
+                                className="p-1 rounded text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/20"
+                                title="Split Transaction"
+                              >
+                                <Split className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setTransactionToClassify(tx)}
+                                className="p-1 rounded text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/20"
+                                title="Classify / Link Transaction"
+                              >
+                                <LinkIcon className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleSetStatus(tx.id, 'void')}
+                                className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/20"
+                                title="Void Transaction"
+                              >
+                                <XCircle className="w-4 h-4" />
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -511,6 +534,30 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
             </form>
           </div>
         </div>
+      )}
+      {/* Classify Transaction Modal */}
+      {transactionToClassify && (
+        <ClassifyTransactionModal
+          transaction={transactionToClassify}
+          onClose={() => setTransactionToClassify(null)}
+          onSuccess={() => {
+            setTransactionToClassify(null);
+            loadData();
+          }}
+        />
+      )}
+
+      {/* Split Transaction Modal */}
+      {transactionToSplit && (
+        <SplitTransactionModal
+          transaction={transactionToSplit}
+          categories={categories}
+          onClose={() => setTransactionToSplit(null)}
+          onSuccess={() => {
+            setTransactionToSplit(null);
+            loadData();
+          }}
+        />
       )}
     </div>
   );
