@@ -48,6 +48,11 @@ export class HoldingsService {
     const conditions = ['it.household_id = $1', 'it.status = \'CONFIRMED\''];
     const params: any[] = [filter.householdId];
 
+    if (filter.userId) {
+      params.push(filter.userId);
+      conditions.push(`a.owner_user_id = $${params.length}`);
+    }
+
     if (filter.accountId) {
       params.push(filter.accountId);
       conditions.push(`it.investment_account_id = $${params.length}`);
@@ -273,13 +278,13 @@ export class HoldingsService {
     // If it only exists as a snapshot, we add it.
     for (const snap of rawSnapshots) {
       const key = `${snap.instrument_id}_${snap.investment_account_id}`;
-      
+
       const currentPrice = snap.latest_price || parseFloat(snap.current_price) || parseFloat(snap.average_cost);
       const currentValue = parseFloat(snap.quantity) * currentPrice;
       const totalInvested = parseFloat(snap.quantity) * parseFloat(snap.average_cost || 0);
       const unrealizedPnL = currentValue - totalInvested;
       const unrealizedPnLPercent = totalInvested > 0 ? (unrealizedPnL / totalInvested) * 100 : 0;
-      
+
       const snapHolding: SecurityHolding = {
         security_id: snap.instrument_id,
         symbol: snap.symbol,
@@ -308,7 +313,7 @@ export class HoldingsService {
       };
 
       const existingIndex = holdings.findIndex(h => h.security_id === snap.instrument_id && h.account_id === snap.investment_account_id);
-      
+
       if (existingIndex >= 0) {
         // Both transaction history and holding snapshot exist!
         // We attach the snapshot data for UI reconciliation purposes

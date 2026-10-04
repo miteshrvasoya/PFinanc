@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS vault_items (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_vault_items_owner ON vault_items(owner_id);
-CREATE INDEX idx_vault_items_household ON vault_items(household_id);
+CREATE INDEX IF NOT EXISTS idx_vault_items_owner ON vault_items(owner_id);
+CREATE INDEX IF NOT EXISTS idx_vault_items_household ON vault_items(household_id);
 
 
