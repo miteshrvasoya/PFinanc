@@ -120,13 +120,14 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({
                 <th className="py-3 px-4 text-right">Invested</th>
                 <th className="py-3 px-4 text-right">Current Value</th>
                 <th className="py-3 px-4 text-right">Unrealized P&L</th>
+                <th className="py-3 px-4 text-right">Realized / Divs</th>
                 <th className="py-3 px-4 text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
               {filteredHoldings.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-16 text-slate-500">
+                  <td colSpan={10} className="text-center py-16 text-slate-500">
                     No holdings match the selected criteria.
                   </td>
                 </tr>
@@ -239,6 +240,29 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({
                           ({isProfit ? '+' : ''}
                           {h.unrealized_pnl_percent.toFixed(2)}%)
                         </span>
+                      </td>
+
+                      {/* Realized / Divs */}
+                      <td className="py-3.5 px-4 text-right font-mono whitespace-nowrap">
+                        {h.realized_pnl !== 0 && (
+                          <div
+                            className={`inline-flex items-center gap-1 font-bold ${
+                              h.realized_pnl > 0 ? 'text-slate-300' : 'text-rose-400'
+                            }`}
+                          >
+                            <span>
+                              {h.realized_pnl > 0 ? '+' : ''}{formatINR(h.realized_pnl)}
+                            </span>
+                          </div>
+                        )}
+                        {h.total_dividends > 0 && (
+                          <span className="block text-[10px] font-bold text-amber-400">
+                            +Div {formatINR(h.total_dividends)}
+                          </span>
+                        )}
+                        {h.realized_pnl === 0 && h.total_dividends === 0 && (
+                          <span className="text-slate-500">-</span>
+                        )}
                       </td>
 
                       {/* Action */}

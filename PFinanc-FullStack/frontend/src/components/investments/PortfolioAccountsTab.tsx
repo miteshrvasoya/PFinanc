@@ -5,11 +5,12 @@ import { Building, Layers, ShieldCheck, Wallet, Plus, Trash2, Eye } from 'lucide
 
 interface PortfolioAccountsTabProps {
   accounts: any[];
+  holdings: any[];
   onRefresh: () => void;
   onRecordTrade: () => void;
 }
 
-export const PortfolioAccountsTab: React.FC<PortfolioAccountsTabProps> = ({ accounts, onRefresh, onRecordTrade }) => {
+export const PortfolioAccountsTab: React.FC<PortfolioAccountsTabProps> = ({ accounts, holdings, onRefresh, onRecordTrade }) => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -157,9 +158,42 @@ export const PortfolioAccountsTab: React.FC<PortfolioAccountsTabProps> = ({ acco
                   <p className="text-xs text-slate-300"><span className="text-slate-500">Platform:</span> {acc.institution_name || 'N/A'}</p>
                   <p className="text-xs text-slate-300"><span className="text-slate-500">ID/Folio:</span> {acc.account_number_masked || 'N/A'}</p>
                 </div>
+
+                {/* Account Holdings Summary */}
+                {(() => {
+                  const accHoldings = holdings.filter(h => h.account_id === acc.id);
+                  if (accHoldings.length === 0) {
+                    return (
+                      <div className="mt-2 py-2 border-t border-slate-800/80">
+                        <p className="text-[11px] text-slate-500 text-center">No active holdings recorded</p>
+                      </div>
+                    );
+                  }
+
+                  const totalInvested = accHoldings.reduce((sum, h) => sum + h.total_invested, 0);
+                  const currentValue = accHoldings.reduce((sum, h) => sum + h.current_value, 0);
+                  const pnl = currentValue - totalInvested;
+                  const isProfit = pnl >= 0;
+
+                  return (
+                    <div className="mt-2 pt-3 border-t border-slate-800/80 grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Invested</p>
+                        <p className="font-semibold text-slate-300">{formatINR(totalInvested)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Current Value</p>
+                        <p className="font-bold text-white">{formatINR(currentValue)}</p>
+                        <p className={`text-[10px] font-bold ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {isProfit ? '+' : ''}{formatINR(pnl)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
               
-              <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between">
+              <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between mt-4">
                 <span className="text-[11px] font-semibold text-slate-400">Manage Assets</span>
                 <button
                   onClick={onRecordTrade}

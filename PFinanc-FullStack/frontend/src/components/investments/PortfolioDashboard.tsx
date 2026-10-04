@@ -17,6 +17,8 @@ import {
 
 interface PortfolioDashboardProps {
   summaryData: any;
+  accounts?: any[];
+  holdings?: any[];
   onRefreshPrices: () => void;
   onRecordTrade: () => void;
   onNavigateToTab: (tab: string) => void;
@@ -25,6 +27,8 @@ interface PortfolioDashboardProps {
 
 export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
   summaryData,
+  accounts = [],
+  holdings = [],
   onRefreshPrices,
   onRecordTrade,
   onNavigateToTab,
@@ -132,7 +136,7 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
             </div>
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-white mt-1 tracking-tight">
-            {summary.xirr !== null ? `${summary.xirr.toFixed(2)}%` : '16.85%'}
+            {summary.xirr !== null ? `${summary.xirr.toFixed(2)}%` : '0.00%'}
           </div>
           <p className="text-xs text-slate-400 mt-1">Exact date cash-flow IRR</p>
         </div>
@@ -361,6 +365,72 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
               })
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Account Performance Summary */}
+      <div className="glass-panel rounded-2xl p-6 border border-slate-800 space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h4 className="font-bold text-white text-sm flex items-center gap-2">
+            <Building className="w-4 h-4 text-indigo-400" />
+            <span>Performance by Investment Account</span>
+          </h4>
+          <button
+            onClick={() => onNavigateToTab('accounts')}
+            className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1"
+          >
+            <span>Manage Accounts</span>
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {(() => {
+            const investmentAccounts = accounts.filter(a => ['BROKERAGE', 'MUTUAL_FUND', 'RETIREMENT'].includes(a.account_type));
+            
+            if (investmentAccounts.length === 0) {
+              return <p className="text-slate-500 py-4 col-span-full text-center text-xs">No investment accounts found.</p>;
+            }
+
+            return investmentAccounts.map((acc) => {
+              const accHoldings = holdings.filter(h => h.account_id === acc.id);
+              const totalInvested = accHoldings.reduce((sum, h) => sum + h.total_invested, 0);
+              const currentValue = accHoldings.reduce((sum, h) => sum + h.current_value, 0);
+              const pnl = currentValue - totalInvested;
+              const isProfit = pnl >= 0;
+              
+              // Count active assets
+              const activeCount = accHoldings.length;
+
+              return (
+                <div key={acc.id} className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col justify-between">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h5 className="font-bold text-white text-sm truncate max-w-[150px]">{acc.name}</h5>
+                      <p className="text-[10px] text-slate-400 uppercase">{acc.institution_name || acc.account_type.replace('_', ' ')}</p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase bg-slate-800 text-slate-300">
+                      {activeCount} Assets
+                    </span>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-800/80 grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Invested</p>
+                      <p className="font-semibold text-slate-300">{formatINR(totalInvested)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Value</p>
+                      <p className="font-bold text-white">{formatINR(currentValue)}</p>
+                      <p className={`text-[10px] font-bold ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {isProfit ? '+' : ''}{formatINR(pnl)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            });
+          })()}
         </div>
       </div>
     </div>

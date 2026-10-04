@@ -170,6 +170,8 @@ export const InvestmentsView: React.FC = () => {
           {activeTab === 'overview' && (
             <PortfolioDashboard
               summaryData={summaryData}
+              accounts={accounts}
+              holdings={holdings}
               onRefreshPrices={handleRefreshPrices}
               onRecordTrade={() => handleOpenTradeModal('BUY')}
               onNavigateToTab={(tab: string) => setActiveTab(tab as InvestmentSubTab)}
@@ -180,6 +182,7 @@ export const InvestmentsView: React.FC = () => {
           {activeTab === 'accounts' && (
             <PortfolioAccountsTab
               accounts={accounts}
+              holdings={holdings}
               onRefresh={loadAllData}
               onRecordTrade={() => handleOpenTradeModal('BUY')}
             />
