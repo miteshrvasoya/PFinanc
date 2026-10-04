@@ -160,7 +160,7 @@ export class HoldingsService {
       const pos = positionMap.get(key)!;
       const qty = tx.quantity || 0;
 
-      if (tx.transaction_type === 'BUY' || tx.transaction_type === 'SIP') {
+      if (tx.transaction_type === 'BUY' || tx.transaction_type === 'SIP' || tx.transaction_type === 'INITIAL') {
         const effectiveUnitCost = qty > 0 ? (tx.net_amount / qty) : (tx.price_per_unit || 0);
         pos.lots.push({
           date: tx.transaction_date,

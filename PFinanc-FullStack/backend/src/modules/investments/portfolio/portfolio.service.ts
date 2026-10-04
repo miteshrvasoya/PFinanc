@@ -200,7 +200,7 @@ export class PortfolioService {
       const net = parseFloat(String(tx.net_amount));
       const dt = new Date(tx.transaction_date);
 
-      if (tx.transaction_type === 'BUY' || tx.transaction_type === 'SIP') {
+      if (tx.transaction_type === 'BUY' || tx.transaction_type === 'SIP' || tx.transaction_type === 'INITIAL') {
         cashFlows.push({ amount: -net, date: dt });
       } else if (tx.transaction_type === 'SELL' || tx.transaction_type === 'REDEMPTION') {
         cashFlows.push({ amount: net, date: dt });
