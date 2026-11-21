@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "PFinanc",
+    "slug": "pfinanc-mobile",
+    "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "pfinanc",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.miteshvasoya.pfinanc"
+    },
+    "android": {
+      "package": "com.miteshvasoya.pfinanc",
+      "versionCode": 1,
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "android.permission.READ_SMS",
+        "android.permission.RECEIVE_SMS"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "9391d28e-5756-453b-80f5-172e358575b8"
+      }
+    },
+    "owner": "miteshvasoya"
+  }
+}
