@@ -3,8 +3,10 @@ import { View, Text, StyleSheet, ScrollView, Pressable, Switch, Image } from 're
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
+import { comingSoon } from '../utils/notify';
 
-export const FamilyMemberScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
+export const FamilyMemberScreen: React.FC<{ onBack?: () => void; onNavigate?: (screen: string, params?: { filter?: string }) => void }> = ({ onBack, onNavigate }) => {
+  const go = (screen: string, params?: { filter?: string }) => onNavigate && onNavigate(screen, params);
   const insets = useSafeAreaInsets();
   const [role, setRole] = useState('Co-Manager');
   const [canViewNetWorth, setCanViewNetWorth] = useState(true);
@@ -30,7 +32,7 @@ export const FamilyMemberScreen: React.FC<{ onBack?: () => void }> = ({ onBack }
           <View style={styles.activeBadge}>
             <Text style={styles.activeBadgeText}>Active</Text>
           </View>
-          <Pressable style={styles.moreBtn}>
+          <Pressable style={styles.moreBtn} onPress={() => comingSoon('More vert')}>
             <MaterialIcons name="more-vert" size={24} color={colors.onSurfaceVariant} />
           </Pressable>
         </View>
@@ -68,11 +70,11 @@ export const FamilyMemberScreen: React.FC<{ onBack?: () => void }> = ({ onBack }
           </View>
 
           <View style={styles.quickActions}>
-            <Pressable style={styles.actionBtn}>
+            <Pressable style={styles.actionBtn} onPress={() => comingSoon('Send Ping')}>
               <MaterialIcons name="send" size={16} color={colors.primary} />
               <Text style={styles.actionBtnText}>Send Ping</Text>
             </Pressable>
-            <Pressable style={styles.actionBtn}>
+            <Pressable style={styles.actionBtn} onPress={() => go('audit')}>
               <MaterialIcons name="history" size={16} color={colors.primary} />
               <Text style={styles.actionBtnText}>Audit Log</Text>
             </Pressable>
@@ -265,7 +267,7 @@ export const FamilyMemberScreen: React.FC<{ onBack?: () => void }> = ({ onBack }
             </View>
           </View>
 
-          <Pressable style={styles.grantAccessBtn}>
+          <Pressable style={styles.grantAccessBtn} onPress={() => comingSoon('Grant Access to Another Account')}>
             <MaterialIcons name="add" size={20} color={colors.primaryContainer} />
             <Text style={styles.grantAccessBtnText}>Grant Access to Another Account</Text>
           </Pressable>
@@ -281,12 +283,12 @@ export const FamilyMemberScreen: React.FC<{ onBack?: () => void }> = ({ onBack }
             </Text>
           </View>
 
-          <Pressable style={styles.primaryActionBtn}>
+          <Pressable style={styles.primaryActionBtn} onPress={() => comingSoon('Save Permission Changes')}>
             <MaterialIcons name="check-circle" size={18} color={colors.onPrimary} />
             <Text style={styles.primaryActionBtnText}>Save Permission Changes</Text>
           </Pressable>
 
-          <Pressable style={styles.secondaryActionBtn}>
+          <Pressable style={styles.secondaryActionBtn} onPress={() => comingSoon('Remove from Family Vault')}>
             <MaterialIcons name="person-remove" size={18} color={colors.error} />
             <Text style={styles.secondaryActionBtnText}>Remove from Family Vault</Text>
           </Pressable>

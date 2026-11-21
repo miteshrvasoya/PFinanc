@@ -10,10 +10,21 @@ import { apiClient } from '../api/client';
 import { getMaterialIcon } from '../utils/iconMapper';
 import { Alert } from 'react-native';
 
-export const TransactionsScreen: React.FC = () => {
+interface TransactionsScreenProps {
+  onNavigate?: (screen: string, params?: { filter?: string }) => void;
+  initialFilter?: { value: string; nonce: number };
+}
+
+export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({ onNavigate, initialFilter }) => {
   const insets = useSafeAreaInsets();
   const [isPrivacyMasked, setIsPrivacyMasked] = useState(false);
-  const [activeFilter, setActiveFilter] = useState('All');
+  const [activeFilter, setActiveFilter] = useState(initialFilter?.value ?? 'All');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Re-apply the filter whenever another screen deep-links here (e.g. Home → Income)
+  useEffect(() => {
+    if (initialFilter) setActiveFilter(initialFilter.value);
+  }, [initialFilter?.nonce]);
   const [isFilterVisible, setIsFilterVisible] = useState(false);
   const [selectedTxn, setSelectedTxn] = useState<any>(null);
   const [editTxn, setEditTxn] = useState<any>(null);
@@ -64,6 +75,15 @@ export const TransactionsScreen: React.FC = () => {
     if (activeFilter === 'Expenses') filtered = transactions.filter(t => t.transaction_type === 'EXPENSE');
     else if (activeFilter === 'Income') filtered = transactions.filter(t => t.transaction_type === 'INCOME');
     else if (activeFilter === 'Transfers') filtered = transactions.filter(t => t.transaction_type === 'TRANSFER');
+    else if (activeFilter === 'Needs Review') filtered = transactions.filter(t => t.needs_review || t.is_reviewed === false || t.status === 'PENDING' || t.status === 'NEEDS_REVIEW');
+
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      filtered = filtered.filter(t =>
+        [t.merchant_name, t.description, t.category?.name, t.account?.name]
+          .some(v => typeof v === 'string' && v.toLowerCase().includes(q))
+      );
+    }
     
     filtered.forEach(txn => {
       const date = new Date(txn.transaction_date).toLocaleDateString();
@@ -116,10 +136,9 @@ export const TransactionsScreen: React.FC = () => {
             <Text style={styles.contextSubtitle}>AUDIT LEDGER</Text>
             <Text style={styles.contextTitle}>Transactions</Text>
           </View>
-          <Pressable style={styles.scopeSelector}>
-            <View style={styles.scopeDot} />
-            <Text style={styles.scopeText}>Vasoya Family</Text>
-            <MaterialIcons name="expand-more" size={16} color={colors.onSurfaceVariant} />
+          <Pressable style={styles.scopeSelector} onPress={() => onNavigate && onNavigate('imports')}>
+            <MaterialIcons name="upload-file" size={16} color={colors.primary} />
+            <Text style={styles.scopeText}>Import</Text>
           </Pressable>
         </View>
 
@@ -130,14 +149,19 @@ export const TransactionsScreen: React.FC = () => {
               style={styles.searchInput}
               placeholder="Search merchants, categories, accounts..."
               placeholderTextColor={colors.outline}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
             />
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+                <MaterialIcons name="close" size={18} color={colors.outline} />
+              </Pressable>
+            )}
           </View>
           <Pressable style={styles.filterButton} onPress={() => setIsFilterVisible(true)}>
             <MaterialIcons name="tune" size={18} color={colors.primary} />
             <Text style={styles.filterButtonText}>Filter</Text>
-            <View style={styles.filterBadge}>
-              <Text style={styles.filterBadgeText}>2</Text>
-            </View>
           </Pressable>
         </View>
       </View>
@@ -200,11 +224,11 @@ export const TransactionsScreen: React.FC = () => {
               </View>
             </View>
             <View style={styles.pendingBadge}>
-              <Text style={styles.pendingBadgeText}>3 Pending</Text>
+              <Text style={styles.pendingBadgeText}>Pending</Text>
             </View>
           </View>
           <Text style={styles.reviewDesc}>
-            3 automatic detections ready for confirmation across HDFC and ICICI Family accounts.
+            Auto-detected transactions from SMS and imported statements are ready for your confirmation.
           </Text>
           <View style={styles.reviewFooter}>
             <View style={styles.avatarGroup}>
@@ -218,7 +242,7 @@ export const TransactionsScreen: React.FC = () => {
                 <Text style={[styles.miniAvatarText, { color: colors.secondary }]}>Z</Text>
               </View>
             </View>
-            <Pressable style={styles.reviewFlowBtn}>
+            <Pressable style={styles.reviewFlowBtn} onPress={() => onNavigate && onNavigate('smsReview')}>
               <Text style={styles.reviewFlowText}>Quick Review Flow</Text>
               <MaterialIcons name="arrow-forward" size={16} color={colors.primaryContainer} />
             </Pressable>
@@ -228,7 +252,15 @@ export const TransactionsScreen: React.FC = () => {
         {loading ? (
           <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
         ) : Object.keys(groupedTxns).length === 0 ? (
-          <Text style={{ textAlign: 'center', marginTop: 20, color: colors.onSurfaceVariant }}>No transactions found.</Text>
+          <View style={{ alignItems: 'center', marginTop: 24, gap: 10 }}>
+            <MaterialIcons name="search-off" size={36} color={colors.outline} />
+            <Text style={{ color: colors.onSurfaceVariant, fontFamily: 'Inter_500Medium' }}>No transactions found.</Text>
+            {(activeFilter !== 'All' || searchQuery !== '') && (
+              <Pressable onPress={() => { setActiveFilter('All'); setSearchQuery(''); }}>
+                <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold' }}>Clear filters</Text>
+              </Pressable>
+            )}
+          </View>
         ) : (
           Object.keys(groupedTxns).map(dateKey => (
             <View key={dateKey} style={styles.groupContainer}>

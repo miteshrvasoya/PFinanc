@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable, Switch } from 'react-nat
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
+import { comingSoon } from '../utils/notify';
 
 export const SecurityScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const insets = useSafeAreaInsets();
@@ -84,7 +85,7 @@ export const SecurityScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
                   <Text style={styles.itemDesc}>6-digit PIN configured</Text>
                 </View>
               </View>
-              <Pressable style={styles.changeBtn}>
+              <Pressable style={styles.changeBtn} onPress={() => comingSoon('Change PIN')}>
                 <Text style={styles.changeBtnText}>Change PIN</Text>
                 <MaterialIcons name="chevron-right" size={16} color={colors.primary} />
               </Pressable>
@@ -127,7 +128,7 @@ export const SecurityScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
                   </Text>
                 </View>
               </View>
-              <Pressable style={styles.configureBtn}>
+              <Pressable style={styles.configureBtn} onPress={() => comingSoon('Configure')}>
                 <Text style={styles.configureBtnText}>Configure</Text>
               </Pressable>
             </View>

@@ -8,7 +8,15 @@ import { useAuth } from '../context/AuthContext';
 import { apiClient } from '../api/client';
 import { getMaterialIcon } from '../utils/iconMapper';
 
-export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = ({ onNavigate }) => {
+type HomeProps = { onNavigate?: (screen: string, params?: { filter?: string }) => void };
+
+const greetingForHour = () => {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+};
+
+export const HomeScreen: React.FC<HomeProps> = ({ onNavigate }) => {
+  const go = (screen: string, params?: { filter?: string }) => onNavigate && onNavigate(screen, params);
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [isPrivacyMasked, setIsPrivacyMasked] = useState(false);
@@ -56,6 +64,15 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
     }
   };
 
+  const income = dashboardData?.thisMonth?.income || 0;
+  const expenses = dashboardData?.thisMonth?.expenses || 0;
+  const spentPct = income > 0 ? Math.min(100, (expenses / income) * 100) : 0;
+  const savedPct = income > 0 ? Math.max(0, 100 - spentPct) : 0;
+  const netCash = dashboardData?.thisMonth?.netCashFlow || 0;
+  const invGain = (dashboardData?.portfolio?.totalCurrentValue || 0) - (dashboardData?.portfolio?.totalInvested || 0);
+  const invInvested = dashboardData?.portfolio?.totalInvested || 0;
+  const invGainPct = invInvested > 0 ? (invGain / invInvested) * 100 : 0;
+
   const getTxnAmount = (val: number) => {
     if (isPrivacyMasked) return "••••";
     return formatCurrency(val);
@@ -74,7 +91,7 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
             <View style={styles.statusDot} />
           </View>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.greeting}>Good morning, Mitesh</Text>
+            <Text style={styles.greeting}>{greetingForHour()}, {(user?.name || 'there').split(' ')[0]}</Text>
             <Pressable 
               style={styles.scopeButton} 
               onPress={() => setScopeDropdownVisible(!scopeDropdownVisible)}
@@ -82,6 +99,20 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
               <Text style={styles.scopeText}>{currentScope}</Text>
               <MaterialIcons name="arrow-drop-down" size={16} color={colors.onSurfaceVariant} />
             </Pressable>
+            {scopeDropdownVisible && (
+              <View style={styles.scopeMenu}>
+                {['Household', 'Personal'].map(scope => (
+                  <Pressable
+                    key={scope}
+                    style={styles.scopeMenuItem}
+                    onPress={() => { setCurrentScope(scope); setScopeDropdownVisible(false); }}
+                  >
+                    <Text style={[styles.scopeMenuText, currentScope === scope && { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>{scope}</Text>
+                    {currentScope === scope && <MaterialIcons name="check" size={14} color={colors.primary} />}
+                  </Pressable>
+                ))}
+              </View>
+            )}
           </View>
         </View>
         <View style={styles.headerActions}>
@@ -92,7 +123,7 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
               color={colors.primary} 
             />
           </Pressable>
-          <Pressable style={styles.iconButton} onPress={() => onNavigate && onNavigate('notifications')}>
+          <Pressable style={styles.iconButton} onPress={() => go('notifications')}>
             <MaterialIcons name="notifications" size={22} color={colors.primary} />
             <View style={styles.badge}>
               <Text style={styles.badgeText}>2</Text>
@@ -106,6 +137,7 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
         showsVerticalScrollIndicator={false}
       >
         {/* 1. Net Worth Hero Card */}
+        <Pressable onPress={() => go('insights')}>
         <LinearGradient 
           colors={[colors.primaryContainer, '#07241a', '#04150f']}
           start={{ x: 0, y: 0 }}
@@ -120,10 +152,10 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
             </View>
             <View style={styles.heroBadge}>
               <MaterialIcons name="trending-up" size={14} color={colors.primaryFixed} />
-              <Text style={styles.heroBadgeText}>+₹25,000</Text>
+              <Text style={styles.heroBadgeText}>{isPrivacyMasked ? '••••' : `${netCash >= 0 ? '+' : '-'}${formatCurrency(Math.abs(netCash))}`}</Text>
             </View>
           </View>
-          <Text style={styles.heroNote}>This month across 4 unified accounts</Text>
+          <Text style={styles.heroNote}>This month across {dashboardData?.cashPosition?.accounts?.length ?? 0} unified accounts</Text>
           <View style={styles.heroDivider} />
           <View style={styles.heroSplit}>
             <View style={styles.heroSplitItem}>
@@ -140,6 +172,7 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
             <MaterialIcons name="arrow-forward" size={16} color={colors.primaryFixed} />
           </View>
         </LinearGradient>
+        </Pressable>
 
         {/* 2. Needs Attention Alert Box */}
         <View style={styles.alertCard}>
@@ -148,12 +181,12 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
               <MaterialIcons name="assignment-late" size={20} color={colors.onSecondaryContainer} />
             </View>
             <View>
-              <Text style={styles.alertTitle}>3 transactions need review</Text>
-              <Text style={styles.alertSubtitle}>1 imported statement pending verification</Text>
+              <Text style={styles.alertTitle}>Transactions need review</Text>
+              <Text style={styles.alertSubtitle}>Review auto-detected & imported items</Text>
             </View>
           </View>
-          <Pressable style={styles.alertButton}>
-            <Text style={styles.alertButtonText}>Review (4)</Text>
+          <Pressable style={styles.alertButton} onPress={() => go('history', { filter: 'Needs Review' })}>
+            <Text style={styles.alertButtonText}>Review</Text>
             <MaterialIcons name="arrow-forward" size={14} color={colors.primary} />
           </Pressable>
         </View>
@@ -164,36 +197,36 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
             <View style={styles.widgetHeaderLeft}>
               <Text style={styles.widgetTitle}>Cash Flow</Text>
               <View style={styles.pillBadge}>
-                <Text style={styles.pillBadgeText}>56.2% Saved</Text>
+                <Text style={styles.pillBadgeText}>{savedPct.toFixed(1)}% Saved</Text>
               </View>
             </View>
-            <View style={styles.widgetHeaderRight}>
+            <Pressable style={styles.widgetHeaderRight} onPress={() => go('insights')} hitSlop={8}>
               <Text style={styles.widgetLink}>Details</Text>
               <MaterialIcons name="chevron-right" size={14} color={colors.primary} />
-            </View>
+            </Pressable>
           </View>
           <View style={styles.cashFlowGrid}>
-            <View style={styles.cashFlowBox}>
+            <Pressable style={styles.cashFlowBox} onPress={() => go('history', { filter: 'Income' })}>
               <Text style={styles.cashFlowLabel}>Received</Text>
               <Text style={[styles.cashFlowValue, { color: colors.primary }]}>{getBalance('cashIn')}</Text>
-            </View>
-            <View style={styles.cashFlowBox}>
+            </Pressable>
+            <Pressable style={styles.cashFlowBox} onPress={() => go('history', { filter: 'Expenses' })}>
               <Text style={styles.cashFlowLabel}>Spent</Text>
               <Text style={[styles.cashFlowValue, { color: colors.error }]}>{getBalance('cashOut')}</Text>
-            </View>
-            <View style={styles.cashFlowBox}>
+            </Pressable>
+            <Pressable style={styles.cashFlowBox} onPress={() => go('history', { filter: 'All' })}>
               <Text style={styles.cashFlowLabel}>Saved</Text>
               <Text style={[styles.cashFlowValue, { color: colors.primaryContainer }]}>{getBalance('cashSaved')}</Text>
-            </View>
+            </Pressable>
           </View>
           <View style={styles.progressContainer}>
             <View style={styles.progressHeader}>
-              <Text style={styles.progressLabel}>Spent: 43.8%</Text>
-              <Text style={styles.progressLabel}>Monthly Target: ₹30,000 Max</Text>
+              <Text style={styles.progressLabel}>Spent: {spentPct.toFixed(1)}%</Text>
+              <Text style={styles.progressLabel}>Tap Spent / Received to drill in</Text>
             </View>
             <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: '43.8%', backgroundColor: 'rgba(186, 26, 26, 0.8)' }]} />
-              <View style={[styles.progressBarFill, { width: '56.2%', backgroundColor: colors.primaryContainer }]} />
+              <View style={[styles.progressBarFill, { width: `${spentPct}%`, backgroundColor: 'rgba(186, 26, 26, 0.8)' }]} />
+              <View style={[styles.progressBarFill, { width: `${savedPct}%`, backgroundColor: colors.primaryContainer }]} />
             </View>
           </View>
         </View>
@@ -202,7 +235,9 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Accounts & Wallets</Text>
-            <Text style={styles.sectionLink}>View all (5) →</Text>
+            <Pressable onPress={() => go('accounts')} hitSlop={8}>
+              <Text style={styles.sectionLink}>View all{dashboardData?.cashPosition?.accounts?.length ? ` (${dashboardData.cashPosition.accounts.length})` : ''} →</Text>
+            </Pressable>
           </View>
           <ScrollView 
             horizontal 
@@ -213,7 +248,7 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
               <ActivityIndicator color={colors.primary} />
             ) : dashboardData?.cashPosition?.accounts?.length > 0 ? (
               dashboardData.cashPosition.accounts.map((acc: any) => (
-                <View key={acc.id} style={styles.accountCard}>
+                <Pressable key={acc.id} style={styles.accountCard} onPress={() => go('accounts')}>
                   <View style={styles.accountHeader}>
                     <View style={[styles.tag, { backgroundColor: 'rgba(192, 236, 214, 0.5)' }]}>
                       <Text style={[styles.tagText, { color: colors.onPrimaryFixed }]}>{acc.account_type}</Text>
@@ -225,10 +260,12 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
                     <Text style={styles.accountDesc}>{acc.institution_name || 'N/A'}</Text>
                     <Text style={styles.accountAmount}>{isPrivacyMasked ? '₹••••••' : formatCurrency(acc.current_balance)}</Text>
                   </View>
-                </View>
+                </Pressable>
               ))
             ) : (
-              <Text style={{color: colors.onSurfaceVariant}}>No accounts found.</Text>
+              <Pressable onPress={() => go('accounts')}>
+                <Text style={{color: colors.primary, fontFamily: 'Inter_600SemiBold'}}>No accounts yet — tap to add one</Text>
+              </Pressable>
             )}
           </ScrollView>
         </View>
@@ -252,7 +289,7 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
               “Your dining spending is 18% lower this week compared to last month.”
             </Text>
             <View style={styles.aiActionRow}>
-              <Pressable style={styles.aiButton}>
+              <Pressable style={styles.aiButton} onPress={() => go('advisor')}>
                 <Text style={styles.aiButtonText}>Ask AI</Text>
                 <MaterialIcons name="chat" size={14} color={colors.primary} />
               </Pressable>
@@ -261,14 +298,14 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
         </LinearGradient>
 
         {/* 6. Compact Investments Snapshot */}
-        <View style={styles.widgetCard}>
+        <Pressable style={styles.widgetCard} onPress={() => go('portfolio')}>
           <View style={styles.investHeader}>
             <View style={styles.investHeaderLeft}>
               <MaterialIcons name="trending-up" size={20} color={colors.primary} />
               <Text style={styles.widgetTitle}>Investments</Text>
             </View>
             <View style={styles.pillBadge}>
-              <Text style={[styles.pillBadgeText, { color: colors.primaryContainer }]}>+₹1,10,000 (+13.5%)</Text>
+              <Text style={[styles.pillBadgeText, { color: invGain >= 0 ? colors.primaryContainer : colors.error }]}>{isPrivacyMasked ? '••••' : `${invGain >= 0 ? '+' : '-'}${formatCurrency(Math.abs(invGain))} (${invGainPct.toFixed(1)}%)`}</Text>
             </View>
           </View>
           <View style={styles.investGrid}>
@@ -281,13 +318,19 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
               <Text style={styles.investValueSecondary}>{getBalance('investCost')}</Text>
             </View>
           </View>
-        </View>
+          <View style={styles.investLinkRow}>
+            <Text style={styles.widgetLink}>View portfolio</Text>
+            <MaterialIcons name="chevron-right" size={14} color={colors.primary} />
+          </View>
+        </Pressable>
 
         {/* 7. Recent Transactions */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Recent Activity</Text>
-            <Text style={styles.sectionLink}>View all →</Text>
+            <Pressable onPress={() => go('history')} hitSlop={8}>
+              <Text style={styles.sectionLink}>View all →</Text>
+            </Pressable>
           </View>
           <View style={styles.txnList}>
             {loading ? (
@@ -295,7 +338,7 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
             ) : dashboardData?.recentTransactions?.length > 0 ? (
               dashboardData.recentTransactions.slice(0, 3).map((txn: any, index: number) => (
                 <React.Fragment key={txn.id}>
-                  <View style={styles.txnItem}>
+                  <Pressable style={styles.txnItem} onPress={() => go('history')}>
                     <View style={styles.txnItemLeft}>
                       <View style={[styles.txnIcon, { backgroundColor: txn.category_color || colors.surfaceContainer }]}>
                         <MaterialIcons name={getMaterialIcon(txn.category_icon)} size={20} color={colors.primary} />
@@ -311,7 +354,7 @@ export const HomeScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
                       </Text>
                       <Text style={styles.txnDate}>{new Date(txn.transaction_date).toLocaleDateString()}</Text>
                     </View>
-                  </View>
+                  </Pressable>
                   {index < dashboardData.recentTransactions.slice(0, 3).length - 1 && <View style={styles.txnDivider} />}
                 </React.Fragment>
               ))
@@ -334,6 +377,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   header: {
+    zIndex: 20,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -387,6 +431,41 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
     fontSize: 12, // label-md
     color: colors.onSurfaceVariant,
+  },
+  scopeMenu: {
+    position: 'absolute',
+    top: 38,
+    left: 0,
+    minWidth: 140,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(193, 200, 194, 0.5)',
+    paddingVertical: 4,
+    zIndex: 50,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  scopeMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  scopeMenuText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    color: colors.onSurface,
+  },
+  investLinkRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginTop: 8,
   },
   headerActions: {
     flexDirection: 'row',

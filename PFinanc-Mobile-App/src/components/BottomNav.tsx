@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 
 type Tab = 'home' | 'history' | 'portfolio' | 'more';
@@ -12,86 +12,67 @@ interface BottomNavProps {
   onQuickAddPress: () => void;
 }
 
+type IconName = React.ComponentProps<typeof MaterialIcons>['name'];
+
+const LEFT_TABS: { key: Tab; label: string; icon: IconName }[] = [
+  { key: 'home', label: 'Home', icon: 'home' },
+  { key: 'history', label: 'Activity', icon: 'receipt-long' },
+];
+const RIGHT_TABS: { key: Tab; label: string; icon: IconName }[] = [
+  { key: 'portfolio', label: 'Portfolio', icon: 'show-chart' },
+  { key: 'more', label: 'More', icon: 'grid-view' },
+];
+
 export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange, onQuickAddPress }) => {
+  const insets = useSafeAreaInsets();
+
+  const renderTab = (tab: { key: Tab; label: string; icon: IconName }) => {
+    const active = activeTab === tab.key;
+    return (
+      <Pressable
+        key={tab.key}
+        style={styles.tab}
+        onPress={() => onTabChange(tab.key)}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: active }}
+        accessibilityLabel={tab.label}
+        hitSlop={4}
+      >
+        <View style={[styles.iconPill, active && styles.iconPillActive]}>
+          <MaterialIcons
+            name={tab.icon}
+            size={22}
+            color={active ? colors.onPrimary : colors.outline}
+          />
+        </View>
+        <Text style={[styles.label, active && styles.labelActive]} numberOfLines={1}>
+          {tab.label}
+        </Text>
+      </Pressable>
+    );
+  };
+
   return (
-    <View style={styles.container} pointerEvents="box-none">
-      <BlurView intensity={85} tint="light" style={styles.navBar}>
-        <View style={styles.navBarInner}>
-          {/* Home */}
-          <Pressable 
-            style={({ pressed }) => [
-              activeTab === 'home' ? styles.activeTab : styles.inactiveTab, 
-              pressed && styles.pressed
-            ]}
-            onPress={() => onTabChange('home')}
-          >
-            <MaterialIcons 
-              name="home" 
-              size={activeTab === 'home' ? 20 : 22} 
-              color={activeTab === 'home' ? colors.onPrimary : '#506359'} 
-            />
-            {activeTab === 'home' && <Text style={styles.activeTabText}>Home</Text>}
-          </Pressable>
+    <View
+      style={[styles.container, { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 12 : 8) }]}
+      pointerEvents="box-none"
+    >
+      <View style={styles.bar}>
+        {LEFT_TABS.map(renderTab)}
 
-          {/* History */}
-          <Pressable 
-            style={({ pressed }) => [
-              activeTab === 'history' ? styles.activeTab : styles.inactiveTab, 
-              pressed && styles.pressed
-            ]}
-            onPress={() => onTabChange('history')}
+        <View style={styles.fabSlot}>
+          <Pressable
+            style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+            onPress={onQuickAddPress}
+            accessibilityRole="button"
+            accessibilityLabel="Quick add"
           >
-            <MaterialIcons 
-              name="receipt-long" 
-              size={activeTab === 'history' ? 20 : 22} 
-              color={activeTab === 'history' ? colors.onPrimary : '#506359'} 
-            />
-            {activeTab === 'history' && <Text style={styles.activeTabText}>History</Text>}
-          </Pressable>
-
-          {/* Quick Add FAB */}
-          <View style={styles.fabContainer}>
-            <Pressable 
-              style={({ pressed }) => [styles.fab, pressed && styles.pressed]}
-              onPress={onQuickAddPress}
-            >
-              <MaterialIcons name="add" size={24} color={colors.onPrimary} />
-            </Pressable>
-          </View>
-
-          {/* Portfolio */}
-          <Pressable 
-            style={({ pressed }) => [
-              activeTab === 'portfolio' ? styles.activeTab : styles.inactiveTab, 
-              pressed && styles.pressed
-            ]}
-            onPress={() => onTabChange('portfolio')}
-          >
-            <MaterialIcons 
-              name="trending-up" 
-              size={activeTab === 'portfolio' ? 20 : 22} 
-              color={activeTab === 'portfolio' ? colors.onPrimary : '#506359'} 
-            />
-            {activeTab === 'portfolio' && <Text style={styles.activeTabText}>Portfolio</Text>}
-          </Pressable>
-
-          {/* More */}
-          <Pressable 
-            style={({ pressed }) => [
-              activeTab === 'more' ? styles.activeTab : styles.inactiveTab, 
-              pressed && styles.pressed
-            ]}
-            onPress={() => onTabChange('more')}
-          >
-            <MaterialIcons 
-              name="more-horiz" 
-              size={activeTab === 'more' ? 20 : 22} 
-              color={activeTab === 'more' ? colors.onPrimary : '#506359'} 
-            />
-            {activeTab === 'more' && <Text style={styles.activeTabText}>More</Text>}
+            <MaterialIcons name="add" size={30} color={colors.onPrimary} />
           </Pressable>
         </View>
-      </BlurView>
+
+        {RIGHT_TABS.map(renderTab)}
+      </View>
     </View>
   );
 };
@@ -102,75 +83,72 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 16,
-    paddingBottom: Platform.OS === 'ios' ? 32 : 16,
-    alignItems: 'center',
+    paddingHorizontal: 14,
     zIndex: 40,
   },
-  navBar: {
-    width: '100%',
-    maxWidth: 370,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+  bar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: 28,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
     borderWidth: 1,
-    borderColor: 'rgba(27, 61, 47, 0.1)',
-    shadowColor: 'rgba(11, 28, 21, 0.14)',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 1,
-    shadowRadius: 40,
-    elevation: 10,
+    borderColor: 'rgba(193, 200, 194, 0.5)',
+    shadowColor: '#0b1c15',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.14,
+    shadowRadius: 24,
+    elevation: 14,
   },
-  navBarInner: {
-    flexDirection: 'row',
+  tab: {
+    flex: 1,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 4,
+    justifyContent: 'center',
+    gap: 2,
   },
-  activeTab: {
-    backgroundColor: '#0d3829', // primaryContainer
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 999,
-    gap: 6,
-  },
-  activeTabText: {
-    color: '#ffffff',
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 12,
-    letterSpacing: 0.04 * 12,
-  },
-  inactiveTab: {
-    padding: 10,
-    borderRadius: 999,
+  iconPill: {
+    width: 46,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fabContainer: {
-    marginTop: -24,
-    marginBottom: -12,
+  iconPillActive: {
+    backgroundColor: colors.primaryContainer,
+  },
+  label: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 10.5,
+    color: colors.outline,
+  },
+  labelActive: {
+    fontFamily: 'Inter_700Bold',
+    color: colors.primaryContainer,
+  },
+  fabSlot: {
+    width: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fab: {
-    width: 48,
-    height: 48,
-    backgroundColor: '#0d3829',
-    borderRadius: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginTop: -30,
+    backgroundColor: colors.primaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 4,
-    borderColor: '#f4fbf7', // surface color
-    shadowColor: 'rgba(13, 56, 41, 0.35)',
+    borderColor: colors.surface,
+    shadowColor: colors.primaryContainer,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 20,
-    elevation: 8,
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    elevation: 10,
   },
-  pressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.95 }],
+  fabPressed: {
+    transform: [{ scale: 0.94 }],
+    opacity: 0.9,
   },
 });
