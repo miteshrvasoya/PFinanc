@@ -1,341 +1,270 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, Pressable, TextInput, Platform, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
-import { FilterModal } from '../components/FilterModal';
 import { TransactionDetailsModal } from '../components/TransactionDetailsModal';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { apiClient } from '../api/client';
 import { getMaterialIcon } from '../utils/iconMapper';
-import { Alert } from 'react-native';
 
 interface TransactionsScreenProps {
   onNavigate?: (screen: string, params?: { filter?: string }) => void;
   initialFilter?: { value: string; nonce: number };
+  onAddEntry?: (type: 'expense' | 'income' | 'transfer') => void;
+  refreshKey?: number;
 }
 
-export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({ onNavigate, initialFilter }) => {
+// internal filter value → label shown to the user
+const FILTERS: { value: string; label: string }[] = [
+  { value: 'All', label: 'All' },
+  { value: 'Income', label: 'Money In' },
+  { value: 'Expenses', label: 'Money Out' },
+  { value: 'Transfers', label: 'Moved' },
+  { value: 'Needs Review', label: 'To check' },
+];
+
+const dayLabel = (iso: string) => {
+  const d = new Date(iso);
+  if (d.toDateString() === new Date().toDateString()) return 'Today';
+  if (d.toDateString() === new Date(Date.now() - 86400000).toDateString()) return 'Yesterday';
+  return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+};
+
+export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({ onNavigate, initialFilter, onAddEntry, refreshKey }) => {
   const insets = useSafeAreaInsets();
-  const [isPrivacyMasked, setIsPrivacyMasked] = useState(false);
+  const [hidden, setHidden] = useState(false);
   const [activeFilter, setActiveFilter] = useState(initialFilter?.value ?? 'All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTxn, setSelectedTxn] = useState<any>(null);
+  const [editTxn, setEditTxn] = useState<any>(null);
+  const [isEditVisible, setIsEditVisible] = useState(false);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [failed, setFailed] = useState(false);
 
-  // Re-apply the filter whenever another screen deep-links here (e.g. Home → Income)
+  // Re-apply the filter whenever another screen deep-links here (e.g. Home → Money In)
   useEffect(() => {
     if (initialFilter) setActiveFilter(initialFilter.value);
   }, [initialFilter?.nonce]);
-  const [isFilterVisible, setIsFilterVisible] = useState(false);
-  const [selectedTxn, setSelectedTxn] = useState<any>(null);
-  const [editTxn, setEditTxn] = useState<any>(null);
-  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
-  
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    setFailed(false);
     try {
-      const res = await apiClient.get('/api/transactions?limit=50');
-      if (res.success) {
-        setTransactions(res.data.items || []);
-      }
+      const res = await apiClient.get('/api/transactions?limit=100');
+      if (res.success) setTransactions(res.data.items || []); else setFailed(true);
     } catch (err) {
       console.error('Failed to fetch transactions', err);
+      setFailed(true);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
-
-  useEffect(() => {
-    fetchTransactions();
   }, []);
 
+  useEffect(() => { fetchTransactions(); }, [fetchTransactions, refreshKey]);
+
   const handleDelete = (id: string) => {
-    Alert.alert('Delete Transaction', 'Are you sure you want to permanently delete this transaction?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert('Delete this entry?', 'This cannot be undone.', [
+      { text: 'Keep it', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
         try {
           const res = await apiClient.delete(`/api/transactions/${id}`);
-          if (res.success) {
-            setSelectedTxn(null);
-            fetchTransactions();
-          } else {
-            Alert.alert('Error', res.message || 'Failed to delete transaction');
-          }
-        } catch (error) {
-          Alert.alert('Error', 'An unexpected error occurred while deleting.');
+          if (res.success) { setSelectedTxn(null); fetchTransactions(); }
+          else Alert.alert('Could not delete', res.message || 'Please try again.');
+        } catch {
+          Alert.alert('Could not delete', 'Something went wrong. Please try again.');
         }
-      }}
+      } },
     ]);
   };
 
-  const getGroupedTransactions = () => {
-    const groups: { [key: string]: any[] } = {};
-    let filtered = transactions;
-    if (activeFilter === 'Expenses') filtered = transactions.filter(t => t.transaction_type === 'EXPENSE');
-    else if (activeFilter === 'Income') filtered = transactions.filter(t => t.transaction_type === 'INCOME');
-    else if (activeFilter === 'Transfers') filtered = transactions.filter(t => t.transaction_type === 'TRANSFER');
-    else if (activeFilter === 'Needs Review') filtered = transactions.filter(t => t.needs_review || t.is_reviewed === false || t.status === 'PENDING' || t.status === 'NEEDS_REVIEW');
-
+  const filtered = useMemo(() => {
+    let list = transactions;
+    if (activeFilter === 'Expenses') list = list.filter(t => t.transaction_type === 'EXPENSE');
+    else if (activeFilter === 'Income') list = list.filter(t => t.transaction_type === 'INCOME');
+    else if (activeFilter === 'Transfers') list = list.filter(t => t.transaction_type === 'TRANSFER');
+    else if (activeFilter === 'Needs Review') list = list.filter(t => t.needs_review || t.is_reviewed === false || t.status === 'PENDING' || t.status === 'NEEDS_REVIEW');
     const q = searchQuery.trim().toLowerCase();
     if (q) {
-      filtered = filtered.filter(t =>
-        [t.merchant_name, t.description, t.category?.name, t.account?.name]
-          .some(v => typeof v === 'string' && v.toLowerCase().includes(q))
-      );
+      list = list.filter(t => [t.merchant_name, t.description, t.category?.name, t.account?.name]
+        .some(v => typeof v === 'string' && v.toLowerCase().includes(q)));
     }
-    
-    filtered.forEach(txn => {
-      const date = new Date(txn.transaction_date).toLocaleDateString();
-      if (!groups[date]) groups[date] = [];
-      groups[date].push(txn);
+    return list;
+  }, [transactions, activeFilter, searchQuery]);
+
+  const groups = useMemo(() => {
+    const g: { label: string; items: any[] }[] = [];
+    filtered.forEach(t => {
+      const label = dayLabel(t.transaction_date);
+      const last = g[g.length - 1];
+      if (last && last.label === label) last.items.push(t); else g.push({ label, items: [t] });
     });
-    return groups;
-  };
+    return g;
+  }, [filtered]);
 
-  const groupedTxns = getGroupedTransactions();
-
-  const togglePrivacy = () => setIsPrivacyMasked(!isPrivacyMasked);
-  
-  const getAmount = (val: string) => isPrivacyMasked ? '••••' : val;
-
-  const filters = [
-    'All',
-    'Needs Review',
-    'Expenses',
-    'Income',
-    'Transfers'
-  ];
+  const totalIn = filtered.filter(t => t.transaction_type === 'INCOME').reduce((s, t) => s + Number(t.amount || 0), 0);
+  const totalOut = filtered.filter(t => t.transaction_type === 'EXPENSE').reduce((s, t) => s + Number(t.amount || 0), 0);
+  const fmt = (v: number) => (hidden ? '••••' : `₹${v.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Top App Bar */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.avatarContainer}>
-            <Image 
-              source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAMMLoNemMH9tSe8gpHrr3vy-IfxVRhO-5qWibjufd4drHkX1Pr4Q4qqgV6Ebx3jj9lFhizUoQi-y_QTnm4Klkwa1wlc85ZIxhKrVIEQaR5qsUpwC96f-eOLzhFv97m6kTyR6qHpPCbwOjmYq7gXQck7ru6HwSFAmxuI1NRaa-WwwgQV2AFihcW-bZ2MRf8RUaENY3HD7BQgzN1iWAWzSRoIxQrONSbTTV-Lsdz2wYwFtQhsZ9N9XvGTQ' }}
-              style={styles.avatar}
-            />
-          </View>
-          <Text style={styles.headerTitle}>PFinanc</Text>
-        </View>
-        <Pressable style={styles.iconButton} onPress={togglePrivacy}>
-          <MaterialIcons 
-            name={isPrivacyMasked ? "visibility-off" : "visibility"} 
-            size={20} 
-            color={colors.onSurfaceVariant} 
-          />
-        </Pressable>
-      </View>
-
-      {/* Context Header & Controls */}
-      <View style={styles.contextSection}>
-        <View style={styles.contextHeader}>
-          <View>
-            <Text style={styles.contextSubtitle}>AUDIT LEDGER</Text>
-            <Text style={styles.contextTitle}>Transactions</Text>
-          </View>
-          <Pressable style={styles.scopeSelector} onPress={() => onNavigate && onNavigate('imports')}>
-            <MaterialIcons name="upload-file" size={16} color={colors.primary} />
-            <Text style={styles.scopeText}>Import</Text>
+        <Text style={styles.title}>Activity</Text>
+        <View style={styles.headerRight}>
+          <Pressable style={styles.iconBtn} onPress={() => setHidden(v => !v)} accessibilityLabel="Hide or show amounts">
+            <MaterialIcons name={hidden ? 'visibility-off' : 'visibility'} size={22} color={colors.primary} />
           </Pressable>
-        </View>
-
-        <View style={styles.searchRow}>
-          <View style={styles.searchContainer}>
-            <MaterialIcons name="search" size={19} color={colors.outline} style={styles.searchIcon} />
-            <TextInput 
-              style={styles.searchInput}
-              placeholder="Search merchants, categories, accounts..."
-              placeholderTextColor={colors.outline}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              returnKeyType="search"
-            />
-            {searchQuery.length > 0 && (
-              <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
-                <MaterialIcons name="close" size={18} color={colors.outline} />
-              </Pressable>
-            )}
-          </View>
-          <Pressable style={styles.filterButton} onPress={() => setIsFilterVisible(true)}>
-            <MaterialIcons name="tune" size={18} color={colors.primary} />
-            <Text style={styles.filterButtonText}>Filter</Text>
+          <Pressable style={styles.addBtn} onPress={() => onAddEntry && onAddEntry('expense')}>
+            <MaterialIcons name="add" size={20} color={colors.onPrimary} />
+            <Text style={styles.addBtnText}>Add</Text>
           </Pressable>
         </View>
       </View>
 
-      {/* Sticky Filter Tabs */}
-      <View style={styles.filterTabsContainer}>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterTabsScroll}
-        >
-          {filters.map(filter => {
-            const isActive = activeFilter === filter;
-            const isReview = filter.includes('Review');
+      <View style={styles.searchBox}>
+        <MaterialIcons name="search" size={20} color={colors.outline} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by name or category"
+          placeholderTextColor={colors.outline}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          returnKeyType="search"
+        />
+        {searchQuery.length > 0 && (
+          <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+            <MaterialIcons name="close" size={20} color={colors.outline} />
+          </Pressable>
+        )}
+      </View>
+
+      <View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          {FILTERS.map(f => {
+            const on = activeFilter === f.value;
             return (
-              <Pressable 
-                key={filter}
-                style={[
-                  styles.filterPill,
-                  isActive && styles.filterPillActive,
-                  isReview && styles.filterPillReview
-                ]}
-                onPress={() => setActiveFilter(filter)}
-              >
-                {isReview && <View style={styles.reviewDot} />}
-                <Text style={[
-                  styles.filterPillText,
-                  isActive && styles.filterPillTextActive,
-                  isReview && styles.filterPillTextReview
-                ]}>
-                  {filter}
-                </Text>
+              <Pressable key={f.value} style={[styles.chip, on && styles.chipOn]} onPress={() => setActiveFilter(f.value)}>
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{f.label}</Text>
               </Pressable>
             );
           })}
         </ScrollView>
       </View>
 
-      {/* Main Content Area */}
-      <ScrollView 
+      <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchTransactions(true)} tintColor={colors.primary} />}
       >
-        {/* Needs Review Banner */}
-        <View style={styles.reviewCard}>
-          <View style={styles.reviewGlow} />
-          <View style={styles.reviewHeader}>
-            <View style={styles.reviewHeaderLeft}>
-              <View style={styles.reviewIconBox}>
-                <MaterialIcons name="auto-awesome" size={20} color={colors.onPrimaryFixed} />
-              </View>
-              <View>
-                <View style={styles.reviewEngineRow}>
-                  <Text style={styles.reviewEngineText}>INSTITUTIONAL ENGINE</Text>
-                  <View style={styles.accuracyBadge}>
-                    <Text style={styles.accuracyBadgeText}>98% Accuracy</Text>
-                  </View>
-                </View>
-                <Text style={styles.reviewTitle}>Confidence Detection</Text>
-              </View>
+        {failed && (
+          <Pressable style={styles.errorBox} onPress={() => fetchTransactions()}>
+            <MaterialIcons name="wifi-off" size={18} color={colors.onErrorContainer} />
+            <Text style={styles.errorText}>Couldn't load entries. Tap to try again.</Text>
+          </Pressable>
+        )}
+
+        {!loading && filtered.length > 0 && activeFilter !== 'Transfers' && (
+          <View style={styles.totals}>
+            <View style={styles.totalBox}>
+              <Text style={styles.totalLabel}>Money In</Text>
+              <Text style={[styles.totalValue, { color: colors.primaryContainer }]}>{fmt(totalIn)}</Text>
             </View>
-            <View style={styles.pendingBadge}>
-              <Text style={styles.pendingBadgeText}>Pending</Text>
+            <View style={styles.totalDivider} />
+            <View style={styles.totalBox}>
+              <Text style={styles.totalLabel}>Money Out</Text>
+              <Text style={[styles.totalValue, { color: colors.error }]}>{fmt(totalOut)}</Text>
             </View>
           </View>
-          <Text style={styles.reviewDesc}>
-            Auto-detected transactions from SMS and imported statements are ready for your confirmation.
-          </Text>
-          <View style={styles.reviewFooter}>
-            <View style={styles.avatarGroup}>
-              <View style={[styles.miniAvatar, { backgroundColor: colors.surfaceContainerHigh }]}>
-                <Text style={[styles.miniAvatarText, { color: colors.primary }]}>S</Text>
-              </View>
-              <View style={[styles.miniAvatar, { backgroundColor: colors.primaryFixedDim }]}>
-                <Text style={[styles.miniAvatarText, { color: colors.primary }]}>A</Text>
-              </View>
-              <View style={[styles.miniAvatar, { backgroundColor: colors.secondaryContainer }]}>
-                <Text style={[styles.miniAvatarText, { color: colors.secondary }]}>Z</Text>
-              </View>
-            </View>
-            <Pressable style={styles.reviewFlowBtn} onPress={() => onNavigate && onNavigate('smsReview')}>
-              <Text style={styles.reviewFlowText}>Quick Review Flow</Text>
-              <MaterialIcons name="arrow-forward" size={16} color={colors.primaryContainer} />
-            </Pressable>
-          </View>
-        </View>
+        )}
+
+        {activeFilter === 'All' && (
+          <Pressable style={styles.checkRow} onPress={() => onNavigate && onNavigate('smsReview')}>
+            <MaterialIcons name="fact-check" size={20} color={colors.onSecondaryContainer} />
+            <Text style={styles.checkText}>Check entries found from SMS & statements</Text>
+            <MaterialIcons name="chevron-right" size={20} color={colors.onSecondaryContainer} />
+          </Pressable>
+        )}
 
         {loading ? (
-          <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
-        ) : Object.keys(groupedTxns).length === 0 ? (
-          <View style={{ alignItems: 'center', marginTop: 24, gap: 10 }}>
-            <MaterialIcons name="search-off" size={36} color={colors.outline} />
-            <Text style={{ color: colors.onSurfaceVariant, fontFamily: 'Inter_500Medium' }}>No transactions found.</Text>
-            {(activeFilter !== 'All' || searchQuery !== '') && (
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 30 }} />
+        ) : groups.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <MaterialIcons name="receipt-long" size={44} color={colors.outline} />
+            <Text style={styles.emptyTitle}>{transactions.length === 0 ? 'No entries yet' : 'Nothing matches'}</Text>
+            <Text style={styles.emptyDesc}>
+              {transactions.length === 0 ? 'Add your first entry to start tracking.' : 'Try a different filter or search.'}
+            </Text>
+            {transactions.length === 0 ? (
+              <Pressable style={styles.emptyBtn} onPress={() => onAddEntry && onAddEntry('expense')}>
+                <Text style={styles.emptyBtnText}>Add an entry</Text>
+              </Pressable>
+            ) : (
               <Pressable onPress={() => { setActiveFilter('All'); setSearchQuery(''); }}>
-                <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold' }}>Clear filters</Text>
+                <Text style={styles.clear}>Show everything</Text>
               </Pressable>
             )}
           </View>
-        ) : (
-          Object.keys(groupedTxns).map(dateKey => (
-            <View key={dateKey} style={styles.groupContainer}>
-              <View style={styles.groupHeader}>
-                <Text style={styles.groupTitle}>{dateKey.toUpperCase()}</Text>
-                <Text style={styles.groupMeta}>{groupedTxns[dateKey].length} Transactions</Text>
-              </View>
-              <View style={styles.txnList}>
-                {groupedTxns[dateKey].map((txn: any, index: number) => (
+        ) : groups.map(g => (
+          <View key={g.label}>
+            <Text style={styles.dayLabel}>{g.label}</Text>
+            <View style={styles.list}>
+              {g.items.map((txn, i) => {
+                const out = txn.transaction_type === 'EXPENSE';
+                const transfer = txn.transaction_type === 'TRANSFER';
+                const sign = transfer ? '' : out ? '-' : '+';
+                return (
                   <React.Fragment key={txn.id}>
-                    <Pressable 
-                      style={styles.txnItem}
+                    <Pressable
+                      style={styles.txn}
                       onPress={() => setSelectedTxn({
                         id: txn.id,
                         merchant: txn.merchant_name || txn.description,
-                        amount: getAmount((txn.transaction_type === 'EXPENSE' ? '-₹' : '+₹') + txn.amount),
+                        amount: (hidden ? '••••' : `${out ? '-' : '+'}₹${txn.amount}`),
                         date: new Date(txn.transaction_date).toLocaleString(),
                         category: txn.category?.name || 'Uncategorized',
                         account: txn.account?.name || 'Account',
                         source: txn.source_type,
                         owner: txn.user?.name,
                         icon: getMaterialIcon(txn.category?.icon),
-                        raw: txn
+                        raw: txn,
                       })}
                     >
-                      <View style={styles.txnItemLeft}>
-                        <View style={[styles.txnIcon, { backgroundColor: txn.category?.color || colors.surfaceContainerLow }]}>
-                          <MaterialIcons name={getMaterialIcon(txn.category?.icon)} size={20} color={colors.primary} />
-                        </View>
-                        <View style={styles.txnContent}>
-                          <View style={styles.txnTitleRow}>
-                            <Text style={styles.txnName} numberOfLines={1}>{txn.merchant_name || txn.description}</Text>
-                          </View>
-                          <Text style={styles.txnDesc} numberOfLines={1}>
-                            {txn.category?.name || 'Uncategorized'} • {txn.account?.name}
-                          </Text>
-                        </View>
+                      <View style={[styles.txnIcon, { backgroundColor: txn.category?.color || colors.surfaceContainer }]}>
+                        <MaterialIcons name={getMaterialIcon(txn.category?.icon)} size={20} color={colors.primary} />
                       </View>
-                      <View style={styles.txnItemRight}>
-                        <Text style={txn.transaction_type === 'EXPENSE' ? styles.txnAmountNeg : styles.txnAmountPos}>
-                          {txn.transaction_type === 'EXPENSE' ? '-' : '+'}₹{txn.amount}
-                        </Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.txnName} numberOfLines={1}>{txn.merchant_name || txn.description || txn.category?.name || 'Entry'}</Text>
+                        <Text style={styles.txnSub} numberOfLines={1}>{txn.category?.name || 'Other'}{txn.account?.name ? ` · ${txn.account.name}` : ''}</Text>
                       </View>
+                      <Text style={[styles.txnAmount, { color: out ? colors.onSurface : colors.primaryContainer }]}>
+                        {hidden ? '••••' : `${sign}₹${Number(txn.amount || 0).toLocaleString('en-IN')}`}
+                      </Text>
                     </Pressable>
-                    {index < groupedTxns[dateKey].length - 1 && <View style={styles.txnDivider} />}
+                    {i < g.items.length - 1 && <View style={styles.divider} />}
                   </React.Fragment>
-                ))}
-              </View>
+                );
+              })}
             </View>
-          ))
-        )}
-
-        {/* Bottom padding for Nav */}
-        <View style={{ height: 100 }} />
+          </View>
+        ))}
+        <View style={{ height: 120 }} />
       </ScrollView>
 
-      <FilterModal visible={isFilterVisible} onClose={() => setIsFilterVisible(false)} />
-      <TransactionDetailsModal 
-        visible={!!selectedTxn} 
-        data={selectedTxn} 
-        onClose={() => setSelectedTxn(null)} 
+      <TransactionDetailsModal
+        visible={!!selectedTxn}
+        data={selectedTxn}
+        onClose={() => setSelectedTxn(null)}
         onDelete={handleDelete}
-        onEdit={(data) => {
-          setEditTxn(data);
-          setSelectedTxn(null); // Close details modal
-          setIsEditModalVisible(true); // Open edit modal
-        }}
+        onDuplicate={(data) => { setEditTxn({ ...data, raw: { ...data.raw, id: undefined, transaction_date: new Date().toISOString() } }); setSelectedTxn(null); setIsEditVisible(true); }}
+        onEdit={(data) => { setEditTxn(data); setSelectedTxn(null); setIsEditVisible(true); }}
       />
-      <QuickAddModal 
-        visible={isEditModalVisible} 
-        onClose={() => {
-          setIsEditModalVisible(false);
-          setEditTxn(null);
-          fetchTransactions(); // Refresh after edit
-        }} 
+      <QuickAddModal
+        visible={isEditVisible}
+        onClose={() => { setIsEditVisible(false); setEditTxn(null); }}
+        onSaved={() => fetchTransactions()}
         initialData={editTxn}
       />
     </View>
@@ -343,487 +272,42 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({ onNaviga
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(193, 200, 194, 0.2)', // outline-variant/20
-    backgroundColor: colors.surface, // surface/90
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  avatarContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.3)',
-    backgroundColor: colors.surfaceContainer,
-    overflow: 'hidden',
-  },
-  avatar: {
-    width: '100%',
-    height: '100%',
-  },
-  headerTitle: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 20, // headline-md
-    color: colors.primary,
-    letterSpacing: -0.2,
-  },
-  iconButton: {
-    padding: 8,
-    borderRadius: 20,
-  },
-  contextSection: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  contextHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  contextSubtitle: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 10,
-    color: colors.onSurfaceVariant,
-    letterSpacing: 0.5,
-  },
-  contextTitle: {
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 24, // headline-lg-mobile
-    color: colors.primary,
-    letterSpacing: -0.3,
-  },
-  scopeSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.4)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 6,
-    shadowColor: 'rgba(13, 56, 41, 0.04)',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  scopeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.primaryContainer,
-  },
-  scopeText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 12,
-    color: colors.primary,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 14,
-  },
-  searchContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.4)',
-    borderRadius: 12,
-    height: 44,
-    paddingHorizontal: 12,
-    shadowColor: 'rgba(13, 56, 41, 0.03)',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    color: colors.onSurface,
-    height: '100%',
-  },
-  filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surfaceContainerHigh,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.5)',
-    borderRadius: 12,
-    height: 44,
-    paddingHorizontal: 14,
-    gap: 6,
-  },
-  filterButtonText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 12,
-    color: colors.primary,
-  },
-  filterBadge: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: colors.primaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterBadgeText: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 10,
-    color: colors.onPrimary,
-  },
-  filterTabsContainer: {
-    backgroundColor: 'rgba(244, 251, 247, 0.95)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(193, 200, 194, 0.15)',
-    paddingVertical: 8,
-    zIndex: 20,
-  },
-  filterTabsScroll: {
-    paddingHorizontal: 20,
-    gap: 8,
-  },
-  filterPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: colors.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.4)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  filterPillActive: {
-    backgroundColor: colors.primaryContainer,
-    borderColor: colors.primaryContainer,
-  },
-  filterPillReview: {
-    backgroundColor: colors.secondaryFixed,
-    borderColor: 'rgba(117, 90, 36, 0.2)', // secondary/20
-  },
-  reviewDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.secondary,
-  },
-  filterPillText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 12,
-    color: colors.onSurfaceVariant,
-  },
-  filterPillTextActive: {
-    color: colors.onPrimary,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  filterPillTextReview: {
-    color: colors.onSecondaryFixed,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 20,
-    gap: 16,
-  },
-  reviewCard: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.4)',
-    borderRadius: 16,
-    padding: 16,
-    overflow: 'hidden',
-    shadowColor: 'rgba(13, 56, 41, 0.05)',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 20,
-    elevation: 2,
-  },
-  reviewGlow: {
-    position: 'absolute',
-    right: -24,
-    bottom: -24,
-    width: 112,
-    height: 112,
-    borderRadius: 56,
-    backgroundColor: 'rgba(192, 236, 214, 0.2)', // primary-fixed/20
-  },
-  reviewHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  reviewHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  reviewIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: colors.primaryFixed,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reviewEngineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  reviewEngineText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 10,
-    color: colors.onSurfaceVariant,
-    letterSpacing: 0.5,
-  },
-  accuracyBadge: {
-    backgroundColor: colors.primaryFixed,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  accuracyBadgeText: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 10,
-    color: colors.onPrimaryFixed,
-  },
-  reviewTitle: {
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 18,
-    color: colors.primary,
-    marginTop: 2,
-  },
-  pendingBadge: {
-    backgroundColor: colors.secondaryFixed,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-  },
-  pendingBadgeText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 11,
-    color: colors.onSecondaryFixed,
-  },
-  reviewDesc: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    color: colors.onSurfaceVariant,
-    marginTop: 10,
-  },
-  reviewFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(193, 200, 194, 0.2)',
-  },
-  avatarGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 6, // account for negative margin
-  },
-  miniAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.surfaceContainerLowest,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: -6,
-  },
-  miniAvatarText: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 10,
-  },
-  reviewFlowBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  reviewFlowText: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 12,
-    color: colors.primaryContainer,
-  },
-  groupContainer: {
-    gap: 8,
-  },
-  groupHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  groupTitle: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 10,
-    color: colors.onSurfaceVariant,
-    letterSpacing: 0.5,
-  },
-  groupMeta: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 10,
-    color: colors.outline,
-  },
-  txnList: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.3)',
-    overflow: 'hidden',
-    shadowColor: 'rgba(13, 56, 41, 0.03)',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 12,
-    elevation: 2,
-  },
-  txnItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 14,
-    gap: 12,
-  },
-  txnItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  txnIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  txnContent: {
-    flex: 1,
-  },
-  txnTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  txnName: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 16, // body-lg
-    color: colors.primary,
-    flexShrink: 1,
-  },
-  autoTagBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primaryFixed,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 8,
-    gap: 2,
-  },
-  autoTagText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 10,
-    color: colors.onPrimaryFixed,
-  },
-  grayBadge: {
-    backgroundColor: colors.surfaceContainerHigh,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 8,
-  },
-  grayBadgeText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 10,
-    color: colors.onSurfaceVariant,
-  },
-  neutralBadge: {
-    backgroundColor: colors.surfaceContainer,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 4,
-    marginTop: 4,
-  },
-  neutralBadgeText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 10,
-    color: colors.onSurfaceVariant,
-  },
-  lightGreenBadge: {
-    backgroundColor: 'rgba(192, 236, 214, 0.6)', // primary-fixed/60
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 8,
-  },
-  lightGreenBadgeText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 10,
-    color: colors.primary,
-  },
-  txnDesc: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 10,
-    color: colors.onSurfaceVariant,
-    marginTop: 2,
-  },
-  txnItemRight: {
-    alignItems: 'flex-end',
-    flexShrink: 0,
-  },
-  txnAmountNeg: {
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 22,
-    color: colors.primary,
-  },
-  txnAmountPos: {
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 22,
-    color: colors.primaryContainer,
-  },
-  txnAmountNeutral: {
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 22,
-    color: colors.onSurfaceVariant,
-  },
-  txnTime: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 11,
-    color: colors.outline,
-  },
-  txnTimePos: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 11,
-    color: colors.primaryContainer,
-  },
-  txnDivider: {
-    height: 1,
-    backgroundColor: 'rgba(193, 200, 194, 0.15)', // outline-variant/15
-  },
+  container: { flex: 1, backgroundColor: colors.surface },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12 },
+  title: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 26, color: colors.primary },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  iconBtn: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
+  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, height: 40, borderRadius: 20, backgroundColor: colors.primaryContainer },
+  addBtnText: { fontFamily: 'Inter_700Bold', fontSize: 14, color: colors.onPrimary },
+  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 20, paddingHorizontal: 14, height: 48, borderRadius: 14, backgroundColor: colors.surfaceContainerLow, borderWidth: 1, borderColor: colors.outlineVariant },
+  searchInput: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 15, color: colors.onSurface },
+  chips: { paddingHorizontal: 20, paddingVertical: 12, gap: 8 },
+  chip: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, backgroundColor: colors.surfaceContainer },
+  chipOn: { backgroundColor: colors.primaryContainer },
+  chipText: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.onSurface },
+  chipTextOn: { color: colors.onPrimary },
+  content: { paddingHorizontal: 20, gap: 14 },
+  errorBox: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, backgroundColor: colors.errorContainer },
+  errorText: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.onErrorContainer },
+  totals: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceContainerLowest, borderRadius: 18, padding: 14, borderWidth: 1, borderColor: 'rgba(193,200,194,0.4)' },
+  totalBox: { flex: 1, alignItems: 'center' },
+  totalDivider: { width: 1, height: 32, backgroundColor: colors.outlineVariant },
+  totalLabel: { fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.onSurfaceVariant },
+  totalValue: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 20, marginTop: 2 },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, backgroundColor: colors.secondaryContainer },
+  checkText: { flex: 1, fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.onSecondaryContainer },
+  dayLabel: { fontFamily: 'Inter_700Bold', fontSize: 13, color: colors.onSurfaceVariant, marginBottom: 8, marginLeft: 4 },
+  list: { backgroundColor: colors.surfaceContainerLowest, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(193,200,194,0.4)', overflow: 'hidden' },
+  txn: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
+  txnIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  txnName: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.onSurface },
+  txnSub: { fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.onSurfaceVariant, marginTop: 2 },
+  txnAmount: { fontFamily: 'Inter_700Bold', fontSize: 15 },
+  divider: { height: 1, backgroundColor: 'rgba(193,200,194,0.3)', marginLeft: 68 },
+  emptyWrap: { alignItems: 'center', gap: 8, paddingVertical: 40 },
+  emptyTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 18, color: colors.onSurface },
+  emptyDesc: { fontFamily: 'Inter_500Medium', fontSize: 14, color: colors.onSurfaceVariant, textAlign: 'center' },
+  emptyBtn: { marginTop: 8, paddingHorizontal: 22, paddingVertical: 13, borderRadius: 14, backgroundColor: colors.primaryContainer },
+  emptyBtnText: { fontFamily: 'Inter_700Bold', fontSize: 15, color: colors.onPrimary },
+  clear: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.primaryContainer, marginTop: 4 },
 });

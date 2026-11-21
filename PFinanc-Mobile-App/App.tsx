@@ -60,6 +60,13 @@ const MainNavigator = () => {
   const [activeScreen, setActiveScreen] = useState('none');
   const [isUnlocked, setIsUnlocked] = useState(false);
 
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const openAdd = (type: 'expense' | 'income' | 'transfer') => {
+    setQuickAddInitialTab(type === 'income' ? 'Income' : type === 'transfer' ? 'Transfer' : 'Expense');
+    setModalVisible(true);
+  };
+
   const [txnFilter, setTxnFilter] = useState<{ value: string; nonce: number }>({ value: 'All', nonce: 0 });
 
   const handleTabChange = (tab: Tab) => {
@@ -98,8 +105,8 @@ const MainNavigator = () => {
 
   return (
     <View style={styles.container}>
-      {activeScreen === 'none' && activeTab === 'home' && <HomeScreen onNavigate={navigate} />}
-      {activeScreen === 'none' && activeTab === 'history' && <TransactionsScreen onNavigate={navigate} initialFilter={txnFilter} />}
+      {activeScreen === 'none' && activeTab === 'home' && <HomeScreen onNavigate={navigate} onAddEntry={openAdd} refreshKey={refreshKey} />}
+      {activeScreen === 'none' && activeTab === 'history' && <TransactionsScreen onNavigate={navigate} initialFilter={txnFilter} onAddEntry={openAdd} refreshKey={refreshKey} />}
       {activeScreen === 'none' && activeTab === 'portfolio' && <PortfolioScreen onNavigate={navigate} />}
       {activeScreen === 'none' && activeTab === 'more' && <MoreScreen onNavigate={navigate} />}
 
@@ -152,6 +159,7 @@ const MainNavigator = () => {
         visible={modalVisible} 
         onClose={() => setModalVisible(false)} 
         initialTab={quickAddInitialTab}
+        onSaved={() => setRefreshKey(k => k + 1)}
       />
       <VoiceAIModal
         visible={voiceAIVisible}
