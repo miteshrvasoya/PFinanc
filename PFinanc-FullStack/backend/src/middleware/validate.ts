@@ -6,6 +6,9 @@ export function validate(schema: {
   query?: ZodSchema<any>;
   params?: ZodSchema<any>;
 }) {
+
+  console.log("Validate");
+
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       if (schema.body) {

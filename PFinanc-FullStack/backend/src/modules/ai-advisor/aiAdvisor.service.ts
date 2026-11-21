@@ -2,8 +2,11 @@ import { QueryHelper } from '../../database/queryHelper.js';
 import { HoldingsService } from '../investments/holdings/holdings.service.js';
 import { PortfolioService } from '../investments/portfolio/portfolio.service.js';
 import { MarketDataService } from '../investments/prices/marketData.service.js';
+import { FinancialInsightsService } from '../analytics/financialInsights.service.js';
+import { toLocalDateString } from '../../utils/date.js';
 import { AIProviderFactory, AIProviderType, DEFAULT_MODELS } from './providers/aiProviderFactory.js';
-import { ChatMessage } from './providers/aiProvider.interface.js';
+import { ChatMessage, ChatResponse, IAIProvider, LLMError } from './providers/aiProvider.interface.js';
+import { AdvisorReport, REPORT_JSON_SCHEMA, describeIssues, extractJson, reportValidator } from './reportSchema.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,28 +23,6 @@ export interface AdvisorConfig {
   monthlyStockBudgetInr?: number;
 }
 
-export interface Recommendation {
-  action: 'BUY' | 'SELL' | 'HOLD' | 'SIP' | 'REBALANCE' | 'AVOID';
-  security: string;
-  securityType: 'STOCK' | 'MUTUAL_FUND' | 'ETF' | 'FIXED_INCOME' | 'GENERAL';
-  reason: string;
-  priority: 'HIGH' | 'MEDIUM' | 'LOW';
-  suggestedAmountInr?: number;
-  expectedReturnPct?: number;
-  timeHorizon?: string;
-}
-
-export interface StructuredReport {
-  portfolioHealthScore: number;
-  riskAssessment: 'Conservative' | 'Moderate' | 'Aggressive' | 'Very Aggressive';
-  keyInsights: string[];
-  recommendations: Recommendation[];
-  rebalancingSuggestions: string[];
-  monthlySipPlan?: Array<{ fund: string; amount: number; reason: string }>;
-  monthlyStockPlan?: Array<{ stock: string; amount: number; reason: string }>;
-  marketOutlook: string;
-}
-
 // ─── AI Advisor Service ───────────────────────────────────────────────────────
 
 export class AIAdvisorService {
@@ -55,7 +36,23 @@ export class AIAdvisorService {
     return row ? this.mapConfig(row) : null;
   }
 
+  /** Mask used when returning API keys to clients; a value starting with it means "unchanged". */
+  static readonly KEY_MASK = '••••';
+
+  static maskConfig(cfg: AdvisorConfig): AdvisorConfig & { hasApiKey: boolean } {
+    const key = cfg.apiKeyOverride;
+    return {
+      ...cfg,
+      apiKeyOverride: key ? `${this.KEY_MASK}${key.slice(-4)}` : undefined,
+      hasApiKey: !!key,
+    };
+  }
+
+  /**
+   * @param data.apiKeyOverride undefined = keep the stored key, '' / null = clear it, otherwise replace it.
+   */
   static async upsertConfig(userId: string, householdId: string, data: Partial<AdvisorConfig>): Promise<AdvisorConfig> {
+    const keepKey = data.apiKeyOverride === undefined;
     const row = await QueryHelper.queryOne<any>(
       `INSERT INTO ai_advisor_config (
         user_id, household_id, ai_provider, model_name, api_key_override,
@@ -64,7 +61,7 @@ export class AIAdvisorService {
       ON CONFLICT (user_id, household_id) DO UPDATE SET
         ai_provider              = EXCLUDED.ai_provider,
         model_name               = EXCLUDED.model_name,
-        api_key_override         = EXCLUDED.api_key_override,
+        api_key_override         = CASE WHEN $10 THEN ai_advisor_config.api_key_override ELSE EXCLUDED.api_key_override END,
         schedule_cron            = EXCLUDED.schedule_cron,
         is_enabled               = EXCLUDED.is_enabled,
         monthly_sip_budget_inr   = EXCLUDED.monthly_sip_budget_inr,
@@ -81,6 +78,7 @@ export class AIAdvisorService {
         data.isEnabled !== undefined ? data.isEnabled : true,
         data.monthlySipBudgetInr || null,
         data.monthlyStockBudgetInr || null,
+        keepKey,
       ]
     );
     return this.mapConfig(row!);
@@ -178,108 +176,102 @@ export class AIAdvisorService {
 
   // ── Core Analysis Runner ─────────────────────────────────────────────────────
 
-  static async runAnalysis(
-    userId: string,
-    householdId: string,
-    triggeredBy: 'SCHEDULED' | 'MANUAL' = 'MANUAL'
-  ): Promise<{ runId: string; reportId?: string; status: string }> {
-
+  /** Create the RUNNING run record (lets callers return the id before the analysis finishes). */
+  static async createRun(userId: string, householdId: string, triggeredBy: 'SCHEDULED' | 'MANUAL'): Promise<string> {
     const cfg = await this.getConfig(userId, householdId) || await this.upsertConfig(userId, householdId, {});
-
-    // Create run record
     const run = await QueryHelper.queryOne<{ id: string }>(
       `INSERT INTO ai_advisor_runs (user_id, household_id, triggered_by, status, ai_provider, model_name)
        VALUES ($1, $2, $3, 'RUNNING', $4, $5) RETURNING id`,
       [userId, householdId, triggeredBy, cfg.aiProvider, cfg.modelName]
     );
-    const runId = run!.id;
+    return run!.id;
+  }
 
-    // Create "started" notification
+  static async runAnalysis(
+    userId: string,
+    householdId: string,
+    triggeredBy: 'SCHEDULED' | 'MANUAL' = 'MANUAL',
+    existingRunId?: string
+  ): Promise<{ runId: string; reportId?: string; status: string }> {
+
+    const cfg = await this.getConfig(userId, householdId) || await this.upsertConfig(userId, householdId, {});
+
+    // Reuse the run created by the caller (manual trigger) instead of creating a second, orphaned one.
+    const runId = existingRunId || (await this.createRun(userId, householdId, triggeredBy));
+
     await this.createNotification(userId, householdId, null, 'AI_RUN_STARTED',
-      '🤖 AI Advisor is analyzing your portfolio…',
-      'Your investment analysis is running. We\'ll notify you when it\'s ready.'
+      '🤖 AI Advisor is analyzing your finances…',
+      'Your analysis is running. We\'ll notify you when it\'s ready.'
     );
 
     try {
-      // 1. Refresh market prices first
-      await MarketDataService.refreshPrices(householdId);
+      // 1. Refresh market prices (best effort: a pricing outage must not block the analysis)
+      await MarketDataService.refreshPrices(householdId).catch((err) =>
+        console.warn('[AIAdvisorService] Price refresh failed, using last known prices:', err?.message)
+      );
 
-      // 2. Build portfolio context
-      const context = await this.buildPortfolioContext(userId, householdId);
+      // 2. Deterministic facts: cash flow, spending, liquidity, debt, portfolio, data quality
+      const [context, marketContext] = await Promise.all([
+        this.buildAnalysisContext(userId, householdId, cfg),
+        this.fetchMarketContext(),
+      ]);
 
-      // 3. Fetch live market context (Nifty, top movers)
-      const marketContext = await this.fetchMarketContext();
-
-      // 4. Build prompt
-      const messages = this.buildPrompt(context, cfg, marketContext);
-
-      // 5. Call AI provider
+      // 3. Ask the model, validate, repair once if needed
       const provider = AIProviderFactory.create({
         provider: cfg.aiProvider,
         model: cfg.modelName,
         apiKeyOverride: cfg.apiKeyOverride,
       });
+      const { report, raw, usage, servedModel } = await this.generateReport(provider, this.buildPrompt(context, marketContext));
 
-      const aiResponse = await provider.chat(messages, { temperature: 0.3, maxTokens: 4096 });
-
-      // 6. Parse AI response
-      const structuredReport = this.parseAIResponse(aiResponse.content);
-
-      // 7. Store report
-      const report = await QueryHelper.queryOne<{ id: string }>(
+      // 4. Store report (legacy columns kept populated for history views)
+      const stored = await QueryHelper.queryOne<{ id: string }>(
         `INSERT INTO ai_advisor_reports (
           run_id, user_id, household_id,
           portfolio_snapshot, market_context, recommendations,
           portfolio_health_score, risk_assessment, key_insights,
-          raw_ai_response, is_read
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false) RETURNING id`,
+          raw_ai_response, report, financial_snapshot, served_model, schema_version, is_read
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,2,false) RETURNING id`,
         [
           runId,
           userId,
           householdId,
-          JSON.stringify(context),
+          JSON.stringify(context.portfolio),
           JSON.stringify(marketContext),
-          JSON.stringify(structuredReport.recommendations),
-          structuredReport.portfolioHealthScore,
-          structuredReport.riskAssessment,
-          JSON.stringify(structuredReport.keyInsights),
-          aiResponse.content,
+          JSON.stringify(report.recommendations),
+          report.financialHealthScore,
+          report.riskAssessment,
+          JSON.stringify(report.keyInsights),
+          raw,
+          JSON.stringify(report),
+          JSON.stringify(context),
+          servedModel,
         ]
       );
 
-      // 8. Update run as completed
       await QueryHelper.query(
         `UPDATE ai_advisor_runs SET
           status = 'COMPLETED', completed_at = NOW(),
           tokens_input = $1, tokens_output = $2, tokens_total = $3,
           market_data_snapshot = $4
          WHERE id = $5`,
-        [
-          aiResponse.tokensInput || null,
-          aiResponse.tokensOutput || null,
-          aiResponse.tokensTotal || null,
-          JSON.stringify(marketContext),
-          runId,
-        ]
+        [usage.input || null, usage.output || null, usage.total || null, JSON.stringify(marketContext), runId]
       );
 
-      // 9. Create "report ready" notification
-      const topRec = structuredReport.recommendations[0];
-      const summary = topRec
-        ? `Top suggestion: ${topRec.action} ${topRec.security} — ${topRec.reason.substring(0, 100)}…`
-        : 'Your personalized investment analysis is ready.';
-
+      const top = report.keyInsights.find((i) => i.severity === 'critical' || i.severity === 'warning') || report.keyInsights[0];
       await this.createNotification(
-        userId, householdId, report!.id,
+        userId, householdId, stored!.id,
         'AI_REPORT_READY',
-        `✅ AI Advisor Report Ready — Health Score: ${structuredReport.portfolioHealthScore}/100`,
-        summary
+        `✅ AI Advisor Report Ready — Financial Health ${report.financialHealthScore}/100`,
+        top ? `${top.title}: ${top.detail}`.slice(0, 240) : report.summary.slice(0, 240)
       );
 
-      return { runId, reportId: report!.id, status: 'COMPLETED' };
+      return { runId, reportId: stored!.id, status: 'COMPLETED' };
 
     } catch (err: any) {
-      const errorMsg = err?.message || 'Unknown error during AI analysis';
+      const errorMsg = err instanceof LLMError
+        ? err.message
+        : err?.message || 'Unknown error during AI analysis';
       console.error(`[AIAdvisorService] Run ${runId} failed:`, errorMsg);
 
       await QueryHelper.query(
@@ -291,43 +283,123 @@ export class AIAdvisorService {
         userId, householdId, null,
         'AI_RUN_FAILED',
         '❌ AI Advisor Analysis Failed',
-        `An error occurred while analyzing your portfolio: ${errorMsg.substring(0, 200)}`
+        errorMsg.substring(0, 240)
       );
 
       return { runId, status: 'FAILED' };
     }
   }
 
-  // ── Portfolio Context Builder ─────────────────────────────────────────────────
+  // ── Context Builder ───────────────────────────────────────────────────────────
 
-  static async buildPortfolioContext(userId: string, householdId: string) {
-    const [holdings, summary] = await Promise.all([
+  /**
+   * Everything the model is allowed to reason about. All numbers are computed deterministically.
+   * Privacy: only aggregates leave the server - no account numbers, transaction narrations, counterparty
+   * names or merchant names (which in Indian UPI data are often private individuals).
+   */
+  static async buildAnalysisContext(userId: string, householdId: string, cfg: AdvisorConfig) {
+    const member = await QueryHelper.queryOne<{ role: string }>(
+      `SELECT role FROM household_members WHERE household_id = $1 AND user_id = $2`,
+      [householdId, userId]
+    );
+    const now = new Date();
+    const startDate = toLocalDateString(new Date(now.getFullYear(), now.getMonth() - 6, 1));
+
+    const [overview, holdings, portfolio] = await Promise.all([
+      FinancialInsightsService.getOverview({
+        householdId, userId, role: member?.role, scope: 'personal', startDate, endDate: toLocalDateString(now),
+      }),
       HoldingsService.calculateHoldings({ householdId, userId }),
       PortfolioService.getPortfolioSummary(householdId, userId),
     ]);
 
+    const k = overview.kpis;
     const activeHoldings = holdings
-      .filter(h => h.current_quantity > 0)
-      .map(h => ({
+      .filter((h) => h.current_quantity > 0)
+      .sort((a, b) => b.current_value - a.current_value)
+      .slice(0, 25)
+      .map((h) => ({
         symbol: h.symbol,
         name: h.name,
         type: h.security_type,
-        quantity: h.current_quantity,
-        avgCost: h.average_cost,
-        currentPrice: h.current_price,
-        currentValue: h.current_value,
-        unrealizedPnlPct: h.unrealized_pnl_percent,
-        totalInvested: h.total_invested,
-        exchange: h.exchange,
-        isStale: h.is_stale,
+        currentValue: Math.round(h.current_value),
+        invested: Math.round(h.total_invested),
+        unrealizedPnlPct: Number(h.unrealized_pnl_percent.toFixed(2)),
+        weightPct: portfolio.summary.totalCurrentValue > 0
+          ? Number(((h.current_value / portfolio.summary.totalCurrentValue) * 100).toFixed(2))
+          : 0,
+        priceIsStale: !!h.is_stale,
       }));
 
     return {
-      holdings: activeHoldings,
-      summary: summary.summary,
-      breakdown: summary.breakdown,
-      assetAllocation: summary.assetAllocation,
-      capturedAt: new Date().toISOString(),
+      asOf: toLocalDateString(now),
+      period: overview.period,
+      cashflow: {
+        totalIncome: k.income,
+        totalExpense: k.expense,
+        netSavings: k.netSavings,
+        savingsRatePct: k.savingsRatePct,
+        emiPaid: k.emiPaid,
+        netInvested: k.netInvested,
+        investmentRatePct: k.investmentRatePct,
+        monthly: overview.monthly,
+      },
+      typicalMonth: {
+        avgIncome: k.avgMonthlyIncome,
+        avgExpense: k.avgMonthlyExpense,
+        avgInvested: k.avgMonthlyInvested,
+        recurringCommitments: overview.recurringPayments.map((r) => ({
+          kind: r.kind,
+          category: r.category_name || 'Uncategorized',
+          monthlyAmount: r.monthly_estimate,
+          monthsSeen: r.months_seen,
+        })),
+      },
+      spendingByCategory: overview.expenseCategories.slice(0, 15).map((c) => ({
+        category: c.category_name,
+        group: c.parent_name,
+        amount: c.total_amount,
+        sharePct: c.share_pct,
+        previousPeriodAmount: c.previous_amount,
+        changePct: c.change_pct,
+      })),
+      incomeBySource: overview.incomeCategories.slice(0, 8).map((c) => ({ source: c.category_name, amount: c.total_amount })),
+      largestExpenses: overview.largestExpenses.map((e) => ({
+        date: e.transaction_date,
+        category: e.category_name || 'Uncategorized',
+        amount: e.amount,
+        flaggedForReview: e.needs_review,
+      })),
+      liquidity: {
+        liquidBalance: k.liquidBalance,
+        creditCardDue: k.creditCardDue,
+        emergencyFundMonths: k.emergencyFundMonths,
+      },
+      debt: {
+        totalOutstanding: k.loanOutstanding,
+        monthlyEmi: k.monthlyEmi,
+        emiToIncomePct: k.emiToIncomePct,
+        loans: overview.loans.map((l) => ({
+          type: l.loan_type,
+          outstanding: l.outstanding,
+          interestRatePct: l.interest_rate,
+          emi: l.emi,
+          endDate: l.end_date,
+        })),
+      },
+      budgets: overview.budgets.map((b) => ({ category: b.category_name, budget: b.budget, spentThisMonth: b.spent, projected: b.projected })),
+      portfolio: {
+        summary: portfolio.summary,
+        breakdown: portfolio.breakdown,
+        assetAllocation: portfolio.assetAllocation.map((a) => ({ label: a.label, amount: Math.round(a.amount), percent: a.percent })),
+        holdings: activeHoldings,
+      },
+      investmentBudget: {
+        monthlySipInr: cfg.monthlySipBudgetInr || null,
+        monthlyStockInr: cfg.monthlyStockBudgetInr || null,
+      },
+      dataQuality: overview.dataQuality,
+      precomputedSignals: overview.insights.map((i) => ({ severity: i.severity, area: i.area, title: i.title, detail: i.detail })),
     };
   }
 
@@ -335,7 +407,6 @@ export class AIAdvisorService {
 
   private static async fetchMarketContext() {
     try {
-      // Fetch Nifty 50 index from Yahoo Finance
       const response = await fetch(
         'https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5ENSEI,%5EBSESN&fields=regularMarketPrice,regularMarketChangePercent',
         {
@@ -355,155 +426,96 @@ export class AIAdvisorService {
         };
       }
     } catch {
-      /* silent fail — market context is supplementary */
+      /* market context is supplementary */
     }
-    return { fetchedAt: new Date().toISOString() };
+    return { nifty50: null, sensex: null, fetchedAt: new Date().toISOString() };
   }
 
-  // ── Prompt Builder ────────────────────────────────────────────────────────────
+  // ── Prompt ────────────────────────────────────────────────────────────────────
 
-  static buildPrompt(context: any, cfg: AdvisorConfig, marketContext: any): ChatMessage[] {
-    const { summary, breakdown, assetAllocation, holdings } = context;
+  static readonly SYSTEM_PROMPT = `You are a careful personal-finance analyst for an Indian household using a self-hosted finance app. You review one person's finances and explain what matters most, in plain language, with specific next steps.
 
-    const allocationSummary = assetAllocation
-      .map((a: any) => `  • ${a.label}: ₹${Math.round(a.amount).toLocaleString('en-IN')} (${a.percent}%)`)
-      .join('\n');
+How to work:
+- Base every statement on the DATA provided. Quote the figures you rely on in each insight's and recommendation's "evidence" field (for example "Savings rate 18.4% vs 26.1% in the previous period"). Never invent balances, prices, returns, fund names, or market events that are not in the data.
+- Cover the whole picture, in this order of importance: cash flow and savings rate, emergency fund, debt and EMIs, spending patterns and budgets, then investments and allocation. A household with thin savings or high-interest debt needs that addressed before any investment idea.
+- "precomputedSignals" are rule-based observations computed from the same data. Use them as starting points: confirm, prioritise, and explain them; do not simply repeat them.
+- Respect data quality. If dataQuality shows flagged, uncategorized, or draft entries, or holdings have stale prices, say how that limits your conclusions in "dataCaveats" and lower confidence accordingly. Do not treat uncategorized spending as a category the person chose.
+- Investment suggestions: stay at the level of asset classes and fund categories (for example "large-cap index fund", "short-duration debt fund", "ELSS for 80C") unless a specific security already appears in the holdings. Do not predict returns. Only fill monthlySipPlan / monthlyStockPlan when the matching monthly budget is provided, and keep their totals within that budget; otherwise return empty arrays.
+- Indian context: consider emergency funds in liquid instruments, EMI-to-income limits, 80C / 80CCD(1B) / 80D where relevant, LTCG/STCG on equity, and the difference between saving and investing. Mention tax ideas as things to check, not as definitive advice.
+- Scores are integers from 0 to 100: financialHealthScore overall, and scoreBreakdown for cashflow, liquidity, debt, and investments. If an area has no data, score it 50 and say so in dataCaveats. riskAssessment describes the investment portfolio; use "Insufficient data" when there are no confirmed holdings.
+- Keep it useful: 3 to 6 keyInsights and 3 to 8 recommendations, most important first. Use "security": "" and "securityType": "GENERAL" for non-investment actions, and "suggestedAmountInr": 0 when no amount applies.
+- marketOutlook: one or two sentences grounded only in the market data provided; if it is missing, say market data was unavailable.
+- This is educational analysis, not licensed investment advice; keep the tone factual and calm.
 
-    const holdingsSummary = holdings.slice(0, 15)
-      .map((h: any) =>
-        `  • ${h.symbol} (${h.type}): ₹${Math.round(h.currentValue).toLocaleString('en-IN')} | P&L: ${h.unrealizedPnlPct.toFixed(2)}% | Avg cost: ₹${h.avgCost.toFixed(2)}`
-      ).join('\n');
+Reply with a single JSON object that matches the required schema, with no text before or after it.`;
 
-    const budgetSection = [
-      cfg.monthlySipBudgetInr
-        ? `- Monthly SIP/MF Budget: ₹${cfg.monthlySipBudgetInr.toLocaleString('en-IN')}`
-        : null,
-      cfg.monthlyStockBudgetInr
-        ? `- Monthly Stock Budget: ₹${cfg.monthlyStockBudgetInr.toLocaleString('en-IN')}`
-        : null,
-    ].filter(Boolean).join('\n') || '- No investment budget configured (provide general rebalancing advice)';
+  static buildPrompt(context: unknown, marketContext: unknown): ChatMessage[] {
+    const userPrompt = `Analyse this person's finances and produce the report.
 
-    const marketSection = marketContext.nifty50
-      ? `- Nifty 50: ${marketContext.nifty50.price?.toFixed(2)} (${marketContext.nifty50.changePct?.toFixed(2)}% today)\n- Sensex: ${marketContext.sensex?.price?.toFixed(2) || 'N/A'}`
-      : '- Market data unavailable';
+All amounts are in INR. Percentages are already computed. "monthly" covers the analysis period; "typicalMonth" averages the last six complete months.
 
-    const systemPrompt = `You are an expert Indian equity and mutual fund investment advisor with deep knowledge of NSE/BSE markets, SEBI regulations, tax implications (STCG/LTCG), and personal finance planning. Your goal is to provide personalized, actionable, data-driven investment advice to maximize capital gains while respecting the user's existing portfolio and risk profile.
+DATA:
+${JSON.stringify({ ...(context as object), market: marketContext })}
 
-Always respond with a single valid JSON object (no markdown code fences). Follow the exact schema provided.`;
-
-    const userPrompt = `Analyze this user's investment portfolio and provide personalized recommendations.
-
-## PORTFOLIO SUMMARY
-- Total Invested: ₹${Math.round(summary.totalInvested).toLocaleString('en-IN')}
-- Current Value: ₹${Math.round(summary.totalCurrentValue).toLocaleString('en-IN')}
-- Unrealized P&L: ₹${Math.round(summary.unrealizedPnL).toLocaleString('en-IN')} (${summary.unrealizedPnLPercent?.toFixed(2) || 0}%)
-- XIRR: ${summary.xirr ? `${summary.xirr.toFixed(2)}%` : 'Insufficient data'}
-- Holdings count: ${summary.holdingsCount}
-
-## ASSET ALLOCATION
-${allocationSummary || '  No holdings found'}
-
-## TOP HOLDINGS
-${holdingsSummary || '  No holdings found'}
-
-## INVESTMENT BUDGET (monthly)
-${budgetSection}
-
-## MARKET CONTEXT (as of analysis)
-${marketSection}
-
-## ANALYSIS REQUIREMENTS
-Provide:
-1. Portfolio Health Score (0-100) based on diversification, returns, risk balance
-2. Risk Assessment (Conservative / Moderate / Aggressive / Very Aggressive)
-3. Key Insights (3-5 actionable observations about the portfolio)
-4. Recommendations (5-10 specific BUY/SELL/HOLD/SIP/REBALANCE actions for Indian markets)
-5. Rebalancing Suggestions (if allocation is imbalanced)
-6. Monthly SIP Plan (only if SIP budget was provided)
-7. Monthly Stock Plan (only if stock budget was provided)
-8. Brief Market Outlook for next 3-6 months
-
-Focus on: tax efficiency, diversification, sector concentration risks, underperforming holdings, and high-conviction opportunities in the current Indian market.
-
-Respond with ONLY this exact JSON structure (no markdown fences):
-{
-  "portfolioHealthScore": <number 0-100>,
-  "riskAssessment": "<Conservative|Moderate|Aggressive|Very Aggressive>",
-  "keyInsights": ["<insight1>", "<insight2>", "<insight3>"],
-  "recommendations": [
-    {
-      "action": "<BUY|SELL|HOLD|SIP|REBALANCE|AVOID>",
-      "security": "<security name or symbol>",
-      "securityType": "<STOCK|MUTUAL_FUND|ETF|FIXED_INCOME|GENERAL>",
-      "reason": "<concise reason>",
-      "priority": "<HIGH|MEDIUM|LOW>",
-      "suggestedAmountInr": <number or null>,
-      "expectedReturnPct": <number or null>,
-      "timeHorizon": "<short/medium/long-term or null>"
-    }
-  ],
-  "rebalancingSuggestions": ["<suggestion1>"],
-  "monthlySipPlan": [{"fund": "<name>", "amount": <number>, "reason": "<reason>"}],
-  "monthlyStockPlan": [{"stock": "<symbol>", "amount": <number>, "reason": "<reason>"}],
-  "marketOutlook": "<2-3 sentence outlook>"
-}`;
+Required JSON shape (every key is required):
+${JSON.stringify(REPORT_JSON_SCHEMA)}`;
 
     return [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: this.SYSTEM_PROMPT },
       { role: 'user', content: userPrompt },
     ];
   }
 
-  // ── AI Response Parser ────────────────────────────────────────────────────────
+  // ── Generation with validation + one repair attempt ───────────────────────────
 
-  static parseAIResponse(rawText: string): StructuredReport {
-    // Strip markdown code fences if present
-    let jsonText = rawText
-      .replace(/```json\s*/gi, '')
-      .replace(/```\s*/gi, '')
-      .trim();
+  static async generateReport(provider: IAIProvider, messages: ChatMessage[]) {
+    const schema = { name: 'financial_advisor_report', schema: REPORT_JSON_SCHEMA };
+    const options = { temperature: 0.2, maxTokens: 16000, effort: 'high' as const, jsonSchema: schema };
 
-    // Extract JSON object if wrapped in text
-    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) jsonText = jsonMatch[0];
+    const usage = { input: 0, output: 0, total: 0 };
+    const track = (r: ChatResponse) => {
+      usage.input += r.tokensInput || 0;
+      usage.output += r.tokensOutput || 0;
+      usage.total += r.tokensTotal || 0;
+    };
 
-    let parsed: any;
-    try {
-      parsed = JSON.parse(jsonText);
-    } catch {
-      // Fallback graceful response if AI returned non-JSON
-      console.warn('[AIAdvisorService] Failed to parse AI JSON, returning fallback report');
-      return {
-        portfolioHealthScore: 50,
-        riskAssessment: 'Moderate',
-        keyInsights: ['AI analysis completed. Review the raw response for details.'],
-        recommendations: [],
-        rebalancingSuggestions: [],
-        marketOutlook: rawText.substring(0, 500),
-      };
+    const first = await provider.chat(messages, options);
+    track(first);
+    const attempt = this.validate(first.content);
+    if (attempt.ok) {
+      return { report: attempt.report, raw: first.content, usage, servedModel: first.model || null };
     }
 
-    return {
-      portfolioHealthScore: Math.min(100, Math.max(0, Number(parsed.portfolioHealthScore) || 50)),
-      riskAssessment: parsed.riskAssessment || 'Moderate',
-      keyInsights: Array.isArray(parsed.keyInsights) ? parsed.keyInsights : [],
-      recommendations: Array.isArray(parsed.recommendations)
-        ? parsed.recommendations.map((r: any) => ({
-            action: r.action || 'HOLD',
-            security: r.security || '',
-            securityType: r.securityType || 'GENERAL',
-            reason: r.reason || '',
-            priority: r.priority || 'MEDIUM',
-            suggestedAmountInr: r.suggestedAmountInr ? Number(r.suggestedAmountInr) : undefined,
-            expectedReturnPct: r.expectedReturnPct ? Number(r.expectedReturnPct) : undefined,
-            timeHorizon: r.timeHorizon || undefined,
-          }))
-        : [],
-      rebalancingSuggestions: Array.isArray(parsed.rebalancingSuggestions) ? parsed.rebalancingSuggestions : [],
-      monthlySipPlan: Array.isArray(parsed.monthlySipPlan) ? parsed.monthlySipPlan : undefined,
-      monthlyStockPlan: Array.isArray(parsed.monthlyStockPlan) ? parsed.monthlyStockPlan : undefined,
-      marketOutlook: parsed.marketOutlook || '',
-    };
+    // Repair: show the model its own output and the exact problems, ask for a corrected object.
+    console.warn(`[AIAdvisorService] Report failed validation, requesting repair:\n${attempt.problems}`);
+    const repair = await provider.chat(
+      [
+        ...messages,
+        { role: 'assistant', content: first.content.slice(0, 60000) },
+        {
+          role: 'user',
+          content: `That reply did not match the required schema:\n${attempt.problems}\n\nReturn the complete corrected JSON object only, keeping your analysis the same where it was valid.`,
+        },
+      ],
+      options
+    );
+    track(repair);
+    const second = this.validate(repair.content);
+    if (second.ok) {
+      return { report: second.report, raw: repair.content, usage, servedModel: repair.model || null };
+    }
+    throw new Error(`The AI response could not be turned into a valid report after one repair attempt:\n${second.problems}`);
+  }
+
+  private static validate(raw: string): { ok: true; report: AdvisorReport } | { ok: false; problems: string } {
+    let parsed: unknown;
+    try {
+      parsed = extractJson(raw);
+    } catch (e: any) {
+      return { ok: false, problems: `- (root): ${e.message}` };
+    }
+    const result = reportValidator.safeParse(parsed);
+    return result.success ? { ok: true, report: result.data } : { ok: false, problems: describeIssues(result.error) };
   }
 
   // ── Notification Helper ───────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { QueryHelper } from '../../../database/queryHelper.js';
+import { toLocalDateString } from '../../../utils/date.js';
 import { logAudit } from '../../../utils/audit.js';
 
 export interface SecurityWithPrice {
@@ -203,7 +204,7 @@ export class SecuritiesService {
     if (data.initial_price && data.initial_price > 0) {
       await QueryHelper.insert('security_prices', {
         security_id: security.id,
-        price_date: new Date().toISOString().split('T')[0],
+        price_date: toLocalDateString(),
         close: data.initial_price,
         source: 'MANUAL_INITIAL',
         is_stale: false,

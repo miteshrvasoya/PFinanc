@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
-import { formatINR, formatDate } from '../../lib/formatters';
+import { formatINR, formatDate, todayLocal } from '../../lib/formatters';
 import {
   ArrowLeftRight,
   Plus,
@@ -28,7 +28,7 @@ export const TransfersView: React.FC<TransfersViewProps> = ({ initialOpen, onCle
     source_account_id: '',
     destination_account_id: '',
     amount: '',
-    transfer_date: new Date().toISOString().split('T')[0],
+    transfer_date: todayLocal(),
     description: '',
     reference: '',
     status: 'CONFIRMED',
@@ -88,7 +88,7 @@ export const TransfersView: React.FC<TransfersViewProps> = ({ initialOpen, onCle
           source_account_id: accounts[0]?.id || '',
           destination_account_id: accounts[1]?.id || '',
           amount: '',
-          transfer_date: new Date().toISOString().split('T')[0],
+          transfer_date: todayLocal(),
           description: '',
           reference: '',
           status: 'CONFIRMED',

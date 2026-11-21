@@ -4,6 +4,7 @@ import { TransactionsController } from './transactions.controller.js';
 import { authenticate } from '../../middleware/auth.js';
 import { requireHouseholdAccess } from '../../middleware/rbac.js';
 import { validate } from '../../middleware/validate.js';
+import { ASSIGNABLE_TRANSACTION_TYPES } from '../accounts/ledgerTypes.js';
 
 const router = Router();
 
@@ -30,6 +31,12 @@ const updateTransactionSchema = z.object({
   merchant_name: z.string().optional().nullable(),
   transaction_date: z.string().optional(),
   notes: z.string().optional().nullable(),
+  needs_review: z.boolean().optional(),
+  review_note: z.string().optional().nullable(),
+  // Used by the Classify / Link dialog (previously stripped by validation, so it silently did nothing).
+  transaction_type: z.enum(ASSIGNABLE_TRANSACTION_TYPES as unknown as [string, ...string[]]).optional(),
+  linked_entity_type: z.enum(['LOAN', 'RENT']).optional().nullable(),
+  linked_entity_id: z.string().uuid().optional().nullable(),
 });
 
 router.use(authenticate);

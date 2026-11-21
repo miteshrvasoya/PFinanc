@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
-import { formatINR, formatDate } from '../../lib/formatters';
+import { formatINR, formatDate, isCreditTransaction, todayLocal } from '../../lib/formatters';
 import {
   Search,
   Filter,
@@ -39,6 +39,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [selectedType, setSelectedType] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
+  const [reviewFilter, setReviewFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -49,7 +50,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
     category_id: '',
     transaction_type: 'EXPENSE',
     amount: '',
-    transaction_date: new Date().toISOString().split('T')[0],
+    transaction_date: todayLocal(),
     description: '',
     merchant_name: '',
     status: 'CONFIRMED',
@@ -77,6 +78,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
           account_id: selectedAccountId,
           type: selectedType,
           status: selectedStatus,
+          needs_review: reviewFilter,
           start_date: startDate,
           end_date: endDate,
         }),
@@ -106,7 +108,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
 
   useEffect(() => {
     loadData();
-  }, [selectedAccountId, selectedType, selectedStatus, startDate, endDate]);
+  }, [selectedAccountId, selectedType, selectedStatus, reviewFilter, startDate, endDate]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,7 +135,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
           category_id: '',
           transaction_type: 'EXPENSE',
           amount: '',
-          transaction_date: new Date().toISOString().split('T')[0],
+          transaction_date: todayLocal(),
           description: '',
           merchant_name: '',
           status: 'CONFIRMED',
@@ -229,6 +231,17 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
             <option value="VOID">Void</option>
           </select>
 
+          {/* Review Filter */}
+          <select
+            value={reviewFilter}
+            onChange={(e) => setReviewFilter(e.target.value)}
+            className="w-full md:w-36 bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
+          >
+            <option value="">All (Review)</option>
+            <option value="true">Needs Review</option>
+            <option value="false">Reviewed</option>
+          </select>
+
           <button
             type="submit"
             className="w-full md:w-auto px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold transition-colors"
@@ -265,7 +278,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {transactions.map((tx) => {
-                  const isIncome = tx.transaction_type === 'INCOME' || tx.transaction_type === 'REFUND';
+                  const isIncome = isCreditTransaction(tx);
                   const isTransfer = tx.transaction_type === 'TRANSFER';
                   const isVoid = tx.status === 'VOID';
 
@@ -307,6 +320,19 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
                         ) : (
                           <span className="text-slate-500">—</span>
                         )}
+                        {tx.needs_review && (
+                          <span
+                            title={tx.review_note || 'Needs review'}
+                            className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-500/10 text-amber-400 border border-amber-500/30 cursor-help"
+                          >
+                            Review
+                          </span>
+                        )}
+                        {tx.needs_review && tx.review_note && (
+                          <div className="text-[10px] text-amber-300/70 mt-0.5 max-w-[220px] whitespace-normal">
+                            {tx.review_note}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <span
@@ -318,7 +344,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
                               : 'text-rose-400'
                           }`}
                         >
-                          {isTransfer ? '' : isIncome ? '+' : '-'}{formatINR(tx.amount)}
+                          {isTransfer ? (tx.source_account_id === tx.account_id ? '↑ ' : '↓ ') : isIncome ? '+' : '-'}{formatINR(tx.amount)}
                         </span>
                         <span className="text-[10px] text-slate-500 block uppercase font-mono">
                           {tx.transaction_type}
@@ -350,6 +376,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
                           )}
                           {tx.status !== 'VOID' && (
                             <>
+                              {/* Transfers can only be changed via the Transfers page (both legs move together). */}
+                              {!isTransfer && tx.status !== 'REJECTED' && (
                               <button
                                 onClick={() => setTransactionToSplit(tx)}
                                 className="p-1 rounded text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/20"
@@ -357,6 +385,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
                               >
                                 <Split className="w-4 h-4" />
                               </button>
+                              )}
+                              {!isTransfer && (
                               <button
                                 onClick={() => setTransactionToClassify(tx)}
                                 className="p-1 rounded text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/20"
@@ -364,6 +394,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialActio
                               >
                                 <LinkIcon className="w-4 h-4" />
                               </button>
+                              )}
                               <button
                                 onClick={() => handleSetStatus(tx.id, 'void')}
                                 className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/20"

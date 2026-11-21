@@ -8,6 +8,7 @@ const router = Router();
 router.use(authenticate);
 router.use(requireHouseholdAccess());
 
+router.get('/overview', AnalyticsController.getOverview);
 router.get('/trends', AnalyticsController.getTrends);
 router.get('/categories', AnalyticsController.getCategories);
 router.get('/family', AnalyticsController.getFamily);

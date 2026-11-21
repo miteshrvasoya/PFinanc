@@ -79,59 +79,88 @@ export class InvitationsService {
     return inv;
   }
 
-  static async acceptInvitation(token: string, data: { name?: string; password?: string; existingUserId?: string }) {
+  /**
+   * Public (unauthenticated) acceptance. The caller must prove ownership of the invited email:
+   * - no account yet  -> the supplied password creates it
+   * - account exists  -> the supplied password must match it (otherwise anyone holding the token
+   *                      could obtain a session for the existing user)
+   */
+  static async acceptInvitation(token: string, data: { name?: string; password?: string }) {
     const inv = await this.getInvitationByToken(token);
 
-    let userId = data.existingUserId;
+    if (!data.password) {
+      const error: any = new Error('Password is required to accept this invitation');
+      error.status = 400;
+      error.code = 'PASSWORD_REQUIRED';
+      throw error;
+    }
 
-    if (!userId) {
-      if (!data.password) {
-        const error: any = new Error('Password is required to set up your account');
-        error.status = 400;
+    const userId = await QueryHelper.transaction(async (client) => {
+      // Lock the invitation so it can only be accepted once.
+      const locked = await QueryHelper.queryOne<any>(
+        `SELECT id FROM household_invitations WHERE id = $1 AND status = 'PENDING' AND expires_at > NOW() FOR UPDATE`,
+        [inv.id],
+        client
+      );
+      if (!locked) {
+        const error: any = new Error('Invitation is invalid or has expired');
+        error.status = 404;
+        error.code = 'INVALID_INVITATION';
         throw error;
       }
 
-      // Check if user exists by email
-      let user = await QueryHelper.queryOne<any>(`SELECT * FROM users WHERE email = $1`, [inv.email]);
-      if (!user) {
-        const passwordHash = await bcrypt.hash(data.password, 10);
+      let user = await QueryHelper.queryOne<any>(`SELECT * FROM users WHERE email = $1`, [inv.email], client);
+      if (user) {
+        const ok = user.status === 'ACTIVE' && (await bcrypt.compare(data.password!, user.password_hash));
+        if (!ok) {
+          const error: any = new Error('An account with this email already exists. Enter its password to accept.');
+          error.status = 401;
+          error.code = 'INVALID_CREDENTIALS';
+          throw error;
+        }
+      } else {
         user = await QueryHelper.insert('users', {
           email: inv.email,
-          password_hash: passwordHash,
-          name: data.name || inv.name || inv.email.split('@')[0],
+          password_hash: await bcrypt.hash(data.password!, 10),
+          name: data.name?.trim() || inv.name || inv.email.split('@')[0],
           status: 'ACTIVE',
-        });
+        }, client);
       }
-      userId = user.id;
-    }
 
-    // Add user to household
-    await QueryHelper.insert('household_members', {
-      household_id: inv.household_id,
-      user_id: userId,
-      role: inv.role,
-      status: 'ACTIVE',
-    });
+      const membership = await QueryHelper.queryOne<any>(
+        `SELECT id, status FROM household_members WHERE household_id = $1 AND user_id = $2`,
+        [inv.household_id, user.id],
+        client
+      );
+      if (!membership) {
+        await QueryHelper.insert('household_members', {
+          household_id: inv.household_id,
+          user_id: user.id,
+          role: inv.role,
+          status: 'ACTIVE',
+        }, client);
+      } else if (membership.status !== 'ACTIVE') {
+        await QueryHelper.update('household_members', membership.id, { status: 'ACTIVE', role: inv.role }, '', [], client);
+      }
 
-    // Initialize personal onboarding progress for invited member
-    const existingOnboarding = await QueryHelper.queryOne(
-      `SELECT id FROM onboarding_progress WHERE user_id = $1 AND household_id = $2`,
-      [userId, inv.household_id]
-    );
-    if (!existingOnboarding) {
-      await QueryHelper.insert('onboarding_progress', {
-        household_id: inv.household_id,
-        user_id: userId,
-        current_step: 'welcome',
-        status: 'IN_PROGRESS',
-        completed_sections: JSON.stringify([]),
-        metadata: JSON.stringify({ invited: true }),
-      });
-    }
+      const existingOnboarding = await QueryHelper.queryOne(
+        `SELECT id FROM onboarding_progress WHERE user_id = $1 AND household_id = $2`,
+        [user.id, inv.household_id],
+        client
+      );
+      if (!existingOnboarding) {
+        await QueryHelper.insert('onboarding_progress', {
+          household_id: inv.household_id,
+          user_id: user.id,
+          current_step: 'welcome',
+          status: 'IN_PROGRESS',
+          completed_sections: JSON.stringify([]),
+          metadata: JSON.stringify({ invited: true }),
+        }, client);
+      }
 
-    // Mark invitation as ACCEPTED
-    await QueryHelper.update('household_invitations', inv.id, {
-      status: 'ACCEPTED',
+      await QueryHelper.update('household_invitations', inv.id, { status: 'ACCEPTED' }, '', [], client);
+      return user.id as string;
     });
 
     const user = await QueryHelper.queryOne<any>(`SELECT id, email, name, avatar_url FROM users WHERE id = $1`, [userId]);
@@ -150,7 +179,13 @@ export class InvitationsService {
   static async revokeInvitation(householdId: string, invitationId: string, currentUserId: string) {
     const updated = await QueryHelper.update('household_invitations', invitationId, {
       status: 'REVOKED',
-    }, 'household_id = $1', [householdId]);
+    }, "household_id = $1 AND status = 'PENDING'", [householdId]);
+    if (!updated) {
+      const error: any = new Error('Pending invitation not found');
+      error.status = 404;
+      error.code = 'INVITATION_NOT_FOUND';
+      throw error;
+    }
 
     await logAudit(householdId, currentUserId, 'HOUSEHOLD', householdId, 'UPDATE', null, updated);
     return true;

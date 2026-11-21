@@ -16,43 +16,49 @@ export interface ProviderModelConfig {
 export const DEFAULT_MODELS: Record<AIProviderType, string> = {
   OPENROUTER: 'anthropic/claude-sonnet-4-5',
   OPENAI: 'gpt-4o',
-  GEMINI: 'gemini-1.5-pro',
-  ANTHROPIC: 'claude-sonnet-4-5',
+  GEMINI: 'gemini-2.5-pro',
+  ANTHROPIC: 'claude-opus-5-5',
 };
 
 /** Available model options displayed in the settings UI */
 export const AVAILABLE_MODELS: Record<AIProviderType, Array<{ id: string; name: string }>> = {
   OPENROUTER: [
-    { id: 'anthropic/claude-sonnet-4-5', name: 'Claude Sonnet 4.5 (Recommended)' },
-    { id: 'anthropic/claude-3.5-haiku', name: 'Claude Haiku 3.5 (Fast & cheap)' },
+    { id: 'anthropic/claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
     { id: 'openai/gpt-4o', name: 'GPT-4o' },
-    { id: 'google/gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
-    { id: 'google/gemini-2.0-flash-exp:free', name: 'Gemini 2.0 Flash (Free)' },
+    { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
     { id: 'meta-llama/llama-3.3-70b-instruct', name: 'LLaMA 3.3 70B' },
   ],
   OPENAI: [
     { id: 'gpt-4o', name: 'GPT-4o (Recommended)' },
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Fast & cheap)' },
-    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
   ],
   GEMINI: [
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Recommended)' },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Fast)' },
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (Recommended)' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Fast)' },
   ],
   ANTHROPIC: [
-    { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5 (Recommended)' },
-    { id: 'claude-3-5-haiku-20241022', name: 'Claude Haiku 3.5 (Fast & cheap)' },
-    { id: 'claude-opus-4-5', name: 'Claude Opus 4.5 (Most capable)' },
+    { id: 'claude-opus-5-5', name: 'Claude Opus 5.5 (Recommended)' },
+    { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5 (Faster, lower cost)' },
+    { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5 (Fastest, cheapest)' },
+    { id: 'claude-fable-5-2', name: 'Claude Fable 5.2 (Most capable, premium)' },
   ],
 };
+
+/** Saved configs may reference models that have since been retired; map them to the current default. */
+function resolveModel(provider: AIProviderType, model?: string): string {
+  if (!model) return DEFAULT_MODELS[provider];
+  if (provider === 'GEMINI' && /^gemini-1\./.test(model)) return DEFAULT_MODELS.GEMINI;
+  if (provider === 'OPENROUTER' && /^google\/gemini-(1\.|2\.0-flash-exp)/.test(model)) return DEFAULT_MODELS.OPENROUTER;
+  return model;
+}
 
 /**
  * Factory that instantiates the correct AI provider from config
  */
 export class AIProviderFactory {
   static create(cfg: ProviderModelConfig): IAIProvider {
-    const { provider, model, apiKeyOverride } = cfg;
+    const { provider, apiKeyOverride } = cfg;
+    const model = resolveModel(provider, cfg.model);
 
     switch (provider) {
       case 'OPENROUTER':

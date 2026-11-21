@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
-import { formatINR, formatDate } from '../../lib/formatters';
+import { formatINR, formatDate, todayLocal } from '../../lib/formatters';
 import {
   Building,
   Plus,
@@ -23,7 +23,7 @@ export const FixedDepositsSection: React.FC = () => {
     principal_amount: '',
     interest_rate: '7.25',
     compounding_frequency: 'QUARTERLY',
-    start_date: new Date().toISOString().split('T')[0],
+    start_date: todayLocal(),
     maturity_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     notes: '',
   });
@@ -58,7 +58,7 @@ export const FixedDepositsSection: React.FC = () => {
           principal_amount: '',
           interest_rate: '7.25',
           compounding_frequency: 'QUARTERLY',
-          start_date: new Date().toISOString().split('T')[0],
+          start_date: todayLocal(),
           maturity_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
           notes: '',
         });

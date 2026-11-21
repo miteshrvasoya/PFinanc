@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { Client, Pool } from 'pg';
+import { Client, Pool, PoolClient } from 'pg';
 import { config } from '../config/env.js';
 
 async function ensureDatabaseExists() {
@@ -40,8 +40,9 @@ export async function runMigrations() {
     connectionString: config.database.url,
   });
 
+  let client: PoolClient | undefined;
   try {
-    const client = await migrationPool.connect();
+    client = await migrationPool.connect();
     console.log('Running schema migrations...');
 
     let migrationsDir = path.resolve(__dirname, 'migrations');
@@ -55,18 +56,39 @@ export async function runMigrations() {
 
     const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
 
+    // Track applied files so each migration runs exactly once. Databases created before tracking
+    // existed re-run every (idempotent) file once and get recorded.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        filename VARCHAR(255) PRIMARY KEY,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    const applied = new Set(
+      (await client.query<{ filename: string }>('SELECT filename FROM schema_migrations')).rows.map((r) => r.filename)
+    );
+
     for (const file of files) {
+      if (applied.has(file)) continue;
       console.log(`Applying migration: ${file}`);
       const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
-      await client.query(sql);
+      try {
+        await client.query('BEGIN');
+        await client.query(sql);
+        await client.query('INSERT INTO schema_migrations (filename) VALUES ($1)', [file]);
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw new Error(`Migration ${file} failed: ${(err as Error).message}`);
+      }
     }
 
     console.log('All migrations applied successfully!');
-    client.release();
   } catch (error) {
     console.error('Migration failed:', error);
     process.exit(1);
   } finally {
+    client?.release();
     await migrationPool.end();
   }
 }

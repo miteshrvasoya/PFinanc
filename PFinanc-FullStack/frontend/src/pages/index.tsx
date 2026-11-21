@@ -1,12 +1,12 @@
 import React from 'react';
 import { useRouter } from 'next/router';
 import { AppLayout } from '../components/layout/AppLayout';
-import { DashboardView } from '../components/dashboard/DashboardView';
+import { DashboardView, DashboardQuickAction } from '../components/dashboard/DashboardView';
 
 export default function Home() {
   const router = useRouter();
 
-  const handleQuickAction = (action: 'add_expense' | 'add_income' | 'transfer' | 'add_account' | 'import_csv') => {
+  const handleQuickAction = (action: DashboardQuickAction) => {
     if (action === 'add_expense' || action === 'add_income') {
       router.push(`/transactions?action=${action}`);
     } else if (action === 'transfer') {

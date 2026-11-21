@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
-import { formatINR, formatDate } from '../../lib/formatters';
+import { formatINR, formatDate, todayLocal } from '../../lib/formatters';
 import {
   Wallet,
   Landmark,
@@ -30,7 +30,7 @@ export const AccountsView: React.FC = () => {
     institution_name: '',
     account_number: '',
     opening_balance: 0,
-    opening_balance_date: new Date().toISOString().split('T')[0],
+    opening_balance_date: todayLocal(),
     is_shared: false,
     notes: '',
   });
@@ -79,7 +79,7 @@ export const AccountsView: React.FC = () => {
           institution_name: '',
           account_number: '',
           opening_balance: 0,
-          opening_balance_date: new Date().toISOString().split('T')[0],
+          opening_balance_date: todayLocal(),
           is_shared: false,
           notes: '',
         });
@@ -101,6 +101,25 @@ export const AccountsView: React.FC = () => {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const [savingNetWorthFlag, setSavingNetWorthFlag] = useState(false);
+
+  /** Accounts awaiting statement import can be kept out of net worth until their data is complete. */
+  const handleToggleNetWorth = async (account: any) => {
+    setSavingNetWorthFlag(true);
+    try {
+      const next = account.include_in_net_worth === false;
+      const res = await api.updateAccount(account.id, { include_in_net_worth: next });
+      if (res.success) {
+        setSelectedAccount({ ...account, include_in_net_worth: next });
+        fetchAccounts();
+      } else {
+        alert(res.error?.message || 'Could not update the account');
+      }
+    } finally {
+      setSavingNetWorthFlag(false);
     }
   };
 
@@ -172,6 +191,14 @@ export const AccountsView: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-1.5">
+                  {acc.include_in_net_worth === false && (
+                    <span
+                      className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30"
+                      title="This account's balance is not counted in net worth"
+                    >
+                      Not in net worth
+                    </span>
+                  )}
                   {acc.is_shared && (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
                       Shared
@@ -262,6 +289,22 @@ export const AccountsView: React.FC = () => {
                   <span className="text-base text-indigo-400">{formatINR(selectedAccount.current_balance)}</span>
                 </div>
               </div>
+
+              <label className="flex items-start gap-3 p-3 rounded-lg bg-slate-900/40 border border-slate-800 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 accent-indigo-500"
+                  checked={selectedAccount.include_in_net_worth !== false}
+                  disabled={savingNetWorthFlag}
+                  onChange={() => handleToggleNetWorth(selectedAccount)}
+                />
+                <span>
+                  <span className="font-semibold text-slate-200 block">Count this account in net worth</span>
+                  <span className="text-slate-400">
+                    Turn off for accounts whose statement isn&apos;t imported yet, so a partial balance doesn&apos;t distort your totals.
+                  </span>
+                </span>
+              </label>
 
               {selectedAccount.notes && (
                 <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-800 text-xs text-slate-400">

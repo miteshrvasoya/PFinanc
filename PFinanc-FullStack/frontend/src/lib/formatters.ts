@@ -41,3 +41,39 @@ export function formatDate(dateString: string | null | undefined): string {
     return dateString;
   }
 }
+
+/** Transaction types that increase the balance of the account they are booked on (mirrors backend ledgerTypes.ts). */
+export const CREDIT_TRANSACTION_TYPES = [
+  'INCOME',
+  'REFUND',
+  'LOAN_DISBURSEMENT',
+  'LENT_PRINCIPAL_RECEIVED',
+  'LENT_INTEREST_RECEIVED',
+  'BORROWED_AMOUNT',
+  'RENT_RECEIVED',
+  'INVESTMENT_REDEMPTION',
+  'INVESTMENT_INCOME',
+];
+
+export const isCreditTransaction = (tx: { transaction_type: string }) =>
+  CREDIT_TRANSACTION_TYPES.includes(tx.transaction_type);
+
+/**
+ * Today's date as YYYY-MM-DD in the user's local timezone.
+ * (`new Date().toISOString().split('T')[0]` is the UTC date, i.e. yesterday before 05:30 IST.)
+ */
+export const todayLocal = (): string => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** Compact Indian notation for axis ticks and tight spaces: ₹950, ₹12K, ₹1.2L, ₹3.4Cr. */
+export const formatINRCompact = (amount: number): string => {
+  const sign = amount < 0 ? '-' : '';
+  const n = Math.abs(amount || 0);
+  const trim = (v: number) => (v >= 10 ? Math.round(v).toString() : v.toFixed(1).replace(/\.0$/, ''));
+  if (n >= 1e7) return `${sign}₹${trim(n / 1e7)}Cr`;
+  if (n >= 1e5) return `${sign}₹${trim(n / 1e5)}L`;
+  if (n >= 1e3) return `${sign}₹${trim(n / 1e3)}K`;
+  return `${sign}₹${Math.round(n)}`;
+};

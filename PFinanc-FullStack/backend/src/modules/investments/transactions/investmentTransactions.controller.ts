@@ -63,6 +63,17 @@ export class InvestmentTransactionsController {
         }
       }
 
+      if (req.body.dividend_account_id) {
+        const hasDividendAccess = await checkAccountAccess(req.user!.id, req.body.dividend_account_id, 'WRITE');
+        if (!hasDividendAccess) {
+          res.status(403).json({
+            success: false,
+            error: { code: 'ACCOUNT_ACCESS_DENIED', message: 'You do not have write access to the selected payout bank account' },
+          });
+          return;
+        }
+      }
+
       const tx = await InvestmentTransactionsService.create(req.user!.id, {
         ...req.body,
         household_id: householdId,

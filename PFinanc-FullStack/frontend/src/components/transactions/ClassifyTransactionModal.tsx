@@ -150,7 +150,6 @@ export const ClassifyTransactionModal: React.FC<{
                 <optgroup label="Standard">
                   <option value="EXPENSE">Regular Expense</option>
                   <option value="INCOME">Regular Income</option>
-                  <option value="TRANSFER">Transfer</option>
                 </optgroup>
                 <optgroup label="Debt & Loans">
                   <option value="LOAN_DISBURSEMENT">Loan Disbursement (Received)</option>

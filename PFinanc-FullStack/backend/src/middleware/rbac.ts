@@ -17,7 +17,20 @@ declare global {
 /**
  * Middleware ensuring user is a member of the requested household
  */
-export function requireHouseholdAccess(allowedRoles?: Array<'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER'>) {
+const READ_ONLY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+export function isPrivilegedRole(role?: string): boolean {
+  return role === 'OWNER' || role === 'ADMIN';
+}
+
+/**
+ * VIEWERs are read-only (docs/permissions.md). Pass { allowViewerWrites: true } only for routes that
+ * mutate the viewer's *own* state (e.g. their onboarding progress), never shared household data.
+ */
+export function requireHouseholdAccess(
+  allowedRoles?: Array<'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER'>,
+  options: { allowViewerWrites?: boolean } = {}
+) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const user = req.user;
@@ -26,7 +39,10 @@ export function requireHouseholdAccess(allowedRoles?: Array<'OWNER' | 'ADMIN' | 
         return;
       }
 
-      let householdId = (req.headers['x-household-id'] || req.query?.household_id || req.body?.household_id || req.params?.householdId) as string;
+      // An explicit :householdId route param must win over the header, otherwise a caller could pass
+      // RBAC with their own household in the header while the handler acts on the param's household.
+      const pick = (v: unknown) => (Array.isArray(v) ? v[0] : v) as string | undefined;
+      let householdId = (pick(req.params?.householdId) || pick(req.headers['x-household-id']) || pick(req.query?.household_id) || pick(req.body?.household_id)) as string;
 
       if (!householdId) {
         const defaultMembership = await QueryHelper.queryOne<HouseholdMembership>(
@@ -60,6 +76,14 @@ export function requireHouseholdAccess(allowedRoles?: Array<'OWNER' | 'ADMIN' | 
         res.status(403).json({
           success: false,
           error: { code: 'INSUFFICIENT_PERMISSIONS', message: `Action requires one of roles: ${allowedRoles.join(', ')}` },
+        });
+        return;
+      }
+
+      if (member.role === 'VIEWER' && !options.allowViewerWrites && !READ_ONLY_METHODS.has(req.method)) {
+        res.status(403).json({
+          success: false,
+          error: { code: 'READ_ONLY_ROLE', message: 'Viewers have read-only access to this household' },
         });
         return;
       }
@@ -116,4 +140,58 @@ export async function checkAccountAccess(
   if (requiredPermission === 'ADMIN') return grant.permission === 'ADMIN';
 
   return false;
+}
+
+/**
+ * SQL predicate: account row `alias` is visible to the user bound at `userParam` (owner, shared, or explicit grant).
+ * Use for non-privileged (MEMBER / VIEWER) reads; OWNER/ADMIN see every account in the household.
+ */
+export function accessibleAccountSql(alias: string, userParam: string): string {
+  return `(${alias}.owner_user_id = ${userParam} OR ${alias}.is_shared = true OR EXISTS (
+    SELECT 1 FROM account_access aa WHERE aa.account_id = ${alias}.id AND aa.user_id = ${userParam}))`;
+}
+
+/** Throws 404 unless the account exists inside the given household (prevents cross-household writes). */
+export async function assertAccountInHousehold(accountId: string | null | undefined, householdId: string, client?: any): Promise<void> {
+  const ok = accountId
+    ? await QueryHelper.queryOne(`SELECT 1 FROM accounts WHERE id = $1 AND household_id = $2`, [accountId, householdId], client)
+    : null;
+  if (!ok) {
+    const error: any = new Error('Account not found in this household');
+    error.status = 404;
+    error.code = 'ACCOUNT_NOT_FOUND';
+    throw error;
+  }
+}
+
+/** Throws 400 unless the category is a system category or belongs to the household. */
+export async function assertCategoryUsable(categoryId: string | null | undefined, householdId: string, client?: any): Promise<void> {
+  if (!categoryId) return;
+  const ok = await QueryHelper.queryOne(
+    `SELECT 1 FROM categories WHERE id = $1 AND (is_system = true OR household_id = $2)`,
+    [categoryId, householdId],
+    client
+  );
+  if (!ok) {
+    const error: any = new Error('Category not found');
+    error.status = 400;
+    error.code = 'INVALID_CATEGORY';
+    throw error;
+  }
+}
+
+/** Throws 400 unless the user is an active member of the household (for owner_user_id / user_id inputs). */
+export async function assertHouseholdMember(userId: string | null | undefined, householdId: string, client?: any): Promise<void> {
+  if (!userId) return;
+  const ok = await QueryHelper.queryOne(
+    `SELECT 1 FROM household_members WHERE household_id = $1 AND user_id = $2 AND status = 'ACTIVE'`,
+    [householdId, userId],
+    client
+  );
+  if (!ok) {
+    const error: any = new Error('User is not an active member of this household');
+    error.status = 400;
+    error.code = 'INVALID_OWNER';
+    throw error;
+  }
 }

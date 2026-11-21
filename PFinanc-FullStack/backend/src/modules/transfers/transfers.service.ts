@@ -1,4 +1,5 @@
 import { QueryHelper } from '../../database/queryHelper.js';
+import { toLocalDateString } from '../../utils/date.js';
 import { logAudit } from '../../utils/audit.js';
 
 export interface CreateTransferInput {
@@ -40,7 +41,7 @@ export class TransfersService {
     }
 
     const status = input.status || 'CONFIRMED';
-    const transferDate = input.transferDate || new Date().toISOString().split('T')[0];
+    const transferDate = input.transferDate || toLocalDateString();
     const currency = input.currency || 'INR';
 
     return QueryHelper.transaction(async (client) => {

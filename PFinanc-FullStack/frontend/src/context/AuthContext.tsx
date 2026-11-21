@@ -70,12 +70,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       } else {
-        // If it's just a network error (e.g. backend down), don't force logout
-        if (res.error?.code === 'NETWORK_ERROR') {
-          console.warn('Backend unreachable, keeping session intact.');
-        } else {
+        // Only an authentication failure ends the session; outages and 5xx errors keep it intact.
+        const authFailure = ['UNAUTHORIZED', 'INVALID_TOKEN', 'USER_NOT_FOUND', 'ACCOUNT_INACTIVE', 'HTTP_401'].includes(res.error?.code || '');
+        if (authFailure) {
           console.error('Auth check failed:', res.error);
           logout();
+        } else {
+          console.warn('Could not verify session right now, keeping it intact:', res.error);
         }
       }
     } catch (err) {
@@ -152,6 +153,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setHouseholds([]);
     setCurrentHousehold(null);
   };
+
+  // Global sign-out when any API call reports an expired/invalid session.
+  useEffect(() => {
+    const onUnauthorized = () => logout();
+    window.addEventListener('pfinanc:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('pfinanc:unauthorized', onUnauthorized);
+  }, []);
 
   const switchHousehold = (householdId: string) => {
     const found = households.find((h) => h.id === householdId);

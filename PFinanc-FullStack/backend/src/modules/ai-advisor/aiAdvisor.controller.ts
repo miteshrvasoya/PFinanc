@@ -1,3 +1,4 @@
+import { getHouseholdId } from '../../utils/request.js';
 import { Request, Response } from 'express';
 import { AIAdvisorService } from './aiAdvisor.service.js';
 import { AIAdvisorScheduler } from './aiAdvisor.scheduler.js';
@@ -8,13 +9,14 @@ export class AIAdvisorController {
   static async getConfig(req: Request, res: Response) {
     try {
       const userId = (req as any).user.id;
-      const householdId = (req as any).householdId;
+      const householdId = getHouseholdId(req);
 
       let cfg = await AIAdvisorService.getConfig(userId, householdId);
       if (!cfg) {
         cfg = await AIAdvisorService.upsertConfig(userId, householdId, {});
       }
-      return res.json({ success: true, data: cfg });
+      // Never send the stored API key back to the browser.
+      return res.json({ success: true, data: AIAdvisorService.maskConfig(cfg) });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: { code: 'AI_CONFIG_ERROR', message: err.message } });
     }
@@ -24,7 +26,7 @@ export class AIAdvisorController {
   static async updateConfig(req: Request, res: Response) {
     try {
       const userId = (req as any).user.id;
-      const householdId = (req as any).householdId;
+      const householdId = getHouseholdId(req);
       const {
         aiProvider, modelName, apiKeyOverride,
         scheduleCron, isEnabled,
@@ -34,14 +36,18 @@ export class AIAdvisorController {
       const cfg = await AIAdvisorService.upsertConfig(userId, householdId, {
         aiProvider,
         modelName,
-        apiKeyOverride: apiKeyOverride || null,
+        // Masked/omitted key = keep the stored one; empty string = clear it.
+        apiKeyOverride:
+          apiKeyOverride === undefined || (typeof apiKeyOverride === 'string' && apiKeyOverride.startsWith(AIAdvisorService.KEY_MASK))
+            ? undefined
+            : apiKeyOverride || null,
         scheduleCron,
         isEnabled,
         monthlySipBudgetInr: monthlySipBudgetInr ? parseFloat(monthlySipBudgetInr) : undefined,
         monthlyStockBudgetInr: monthlyStockBudgetInr ? parseFloat(monthlyStockBudgetInr) : undefined,
       });
 
-      return res.json({ success: true, data: cfg });
+      return res.json({ success: true, data: AIAdvisorService.maskConfig(cfg) });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: { code: 'AI_CONFIG_UPDATE_ERROR', message: err.message } });
     }
@@ -51,13 +57,18 @@ export class AIAdvisorController {
   static async triggerRun(req: Request, res: Response) {
     try {
       const userId = (req as any).user.id;
-      const householdId = (req as any).householdId;
+      const householdId = getHouseholdId(req);
 
-      // Check for an already-running analysis
+      // Check for an already-running analysis; runs stuck for >30 min (e.g. server restart) are failed.
       const { QueryHelper } = await import('../../database/queryHelper.js');
-      const running = await QueryHelper.queryOne(
-        `SELECT id FROM ai_advisor_runs WHERE user_id = $1 AND status = 'RUNNING'`,
+      await QueryHelper.query(
+        `UPDATE ai_advisor_runs SET status = 'FAILED', completed_at = NOW(), error_message = 'Timed out'
+         WHERE user_id = $1 AND status = 'RUNNING' AND started_at < NOW() - INTERVAL '30 minutes'`,
         [userId]
+      );
+      const running = await QueryHelper.queryOne(
+        `SELECT id FROM ai_advisor_runs WHERE user_id = $1 AND household_id = $2 AND status = 'RUNNING'`,
+        [userId, householdId]
       );
       if (running) {
         return res.status(409).json({
@@ -66,22 +77,9 @@ export class AIAdvisorController {
         });
       }
 
-      // Fire and return immediately with runId — analysis runs async
-      const runId = await new Promise<string>(async (resolve) => {
-        const { QueryHelper } = await import('../../database/queryHelper.js');
-        const cfg = await AIAdvisorService.getConfig(userId, householdId)
-                 || await AIAdvisorService.upsertConfig(userId, householdId, {});
-
-        const run = await QueryHelper.queryOne<{ id: string }>(
-          `INSERT INTO ai_advisor_runs (user_id, household_id, triggered_by, status, ai_provider, model_name)
-           VALUES ($1, $2, 'MANUAL', 'RUNNING', $3, $4) RETURNING id`,
-          [userId, householdId, cfg.aiProvider, cfg.modelName]
-        );
-        resolve(run!.id);
-      });
-
-      // Kick off async — don't await
-      AIAdvisorScheduler.triggerNow(userId, householdId)
+      // Create the run record once, return its id, and let the analysis continue in the background.
+      const runId = await AIAdvisorService.createRun(userId, householdId, 'MANUAL');
+      AIAdvisorService.runAnalysis(userId, householdId, 'MANUAL', runId)
         .catch(err => console.error('[AIAdvisorController] Async run error:', err));
 
       return res.json({ success: true, data: { runId, status: 'RUNNING' } });
@@ -94,7 +92,7 @@ export class AIAdvisorController {
   static async getReports(req: Request, res: Response) {
     try {
       const userId = (req as any).user.id;
-      const householdId = (req as any).householdId;
+      const householdId = getHouseholdId(req);
       const limit = parseInt(req.query.limit as string) || 20;
 
       const reports = await AIAdvisorService.getReports(userId, householdId, limit);
@@ -108,7 +106,7 @@ export class AIAdvisorController {
   static async getLatestReport(req: Request, res: Response) {
     try {
       const userId = (req as any).user.id;
-      const householdId = (req as any).householdId;
+      const householdId = getHouseholdId(req);
 
       const report = await AIAdvisorService.getLatestReport(userId, householdId);
       if (!report) {
@@ -144,7 +142,7 @@ export class AIAdvisorController {
   static async getRuns(req: Request, res: Response) {
     try {
       const userId = (req as any).user.id;
-      const householdId = (req as any).householdId;
+      const householdId = getHouseholdId(req);
       const limit = parseInt(req.query.limit as string) || 20;
 
       const runs = await AIAdvisorService.getRuns(userId, householdId, limit);

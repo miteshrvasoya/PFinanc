@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
-import { formatINR } from '../../lib/formatters';
+import { formatINR, todayLocal } from '../../lib/formatters';
 import {
   Layers,
   Plus,
@@ -38,7 +38,7 @@ export const MutualFundSetupStep: React.FC<MutualFundSetupStepProps> = ({ onNext
     units: '',
     average_nav: '',
     current_nav: '',
-    as_of_date: new Date().toISOString().split('T')[0],
+    as_of_date: todayLocal(),
     investment_type: 'SIP', // SIP or LUMPSUM
     sip_amount: '',
     step_up_percentage: '',
@@ -191,7 +191,7 @@ export const MutualFundSetupStep: React.FC<MutualFundSetupStepProps> = ({ onNext
           units: '', 
           average_nav: '', 
           current_nav: '', 
-          as_of_date: new Date().toISOString().split('T')[0],
+          as_of_date: todayLocal(),
           investment_type: 'SIP',
           sip_amount: '',
           step_up_percentage: '',

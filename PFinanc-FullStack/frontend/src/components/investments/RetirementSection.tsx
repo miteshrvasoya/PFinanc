@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
-import { formatINR, formatDate } from '../../lib/formatters';
+import { formatINR, formatDate, todayLocal } from '../../lib/formatters';
 import {
   ShieldCheck,
   Plus,
@@ -28,7 +28,7 @@ export const RetirementSection: React.FC = () => {
   });
 
   const [contribForm, setContribForm] = useState({
-    contribution_date: new Date().toISOString().split('T')[0],
+    contribution_date: todayLocal(),
     employee_contribution: '',
     employer_contribution: '',
     interest_amount: '0',
@@ -106,7 +106,7 @@ export const RetirementSection: React.FC = () => {
       if (res.success) {
         setShowAddContribModal(false);
         setContribForm({
-          contribution_date: new Date().toISOString().split('T')[0],
+          contribution_date: todayLocal(),
           employee_contribution: '',
           employer_contribution: '',
           interest_amount: '0',

@@ -46,25 +46,12 @@ class ApiClient {
 
     const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
+    let response: Response;
     try {
-      const response = await fetch(url, {
+      response = await fetch(url, {
         ...options,
         headers,
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        return {
-          success: false,
-          error: data.error || {
-            code: `HTTP_${response.status}`,
-            message: data.message || 'An error occurred while communicating with the server',
-          },
-        };
-      }
-
-      return data;
     } catch (error: any) {
       return {
         success: false,
@@ -74,6 +61,34 @@ class ApiClient {
         },
       };
     }
+
+    // Non-JSON bodies (proxy errors, 413 pages, empty 204s) must not be reported as "server unreachable".
+    let data: any = null;
+    const text = await response.text().catch(() => '');
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = null;
+      }
+    }
+
+    if (!response.ok) {
+      const authEndpoint = endpoint.startsWith('/auth/login') || endpoint.startsWith('/auth/register') || endpoint.startsWith('/invitations/public');
+      if (response.status === 401 && token && !authEndpoint && typeof window !== 'undefined') {
+        // Session expired or revoked: let the auth context sign the user out once.
+        window.dispatchEvent(new CustomEvent('pfinanc:unauthorized'));
+      }
+      return {
+        success: false,
+        error: data?.error || {
+          code: `HTTP_${response.status}`,
+          message: data?.message || `Server responded with ${response.status} ${response.statusText}`.trim(),
+        },
+      };
+    }
+
+    return data ?? { success: true };
   }
 
   // Auth & System Status
@@ -397,7 +412,7 @@ class ApiClient {
     return this.request(`/invitations/public/${token}`);
   }
 
-  async acceptPublicInvitation(token: string, data: { name?: string; password?: string; existingUserId?: string }) {
+  async acceptPublicInvitation(token: string, data: { name?: string; password: string }) {
     return this.request(`/invitations/public/${token}/accept`, {
       method: 'POST',
       body: JSON.stringify(data),

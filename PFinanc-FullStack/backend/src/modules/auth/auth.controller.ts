@@ -23,8 +23,13 @@ export class AuthController {
   static async login(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await AuthService.login(req.body);
+
+      console.log("Response: ", result);
+
       res.json({ success: true, data: result });
     } catch (error) {
+
+      console.log("Login API Error:", error);
       next(error);
     }
   }

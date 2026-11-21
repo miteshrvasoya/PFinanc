@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { GenericCsvParser } from '../../investments/imports/parsers/GenericCsvParser.js';
 import { parse } from 'csv-parse/sync';
 
 export interface ColumnMapping {
@@ -115,47 +116,9 @@ export class StatementCsvParser {
    * Parse various date formats into YYYY-MM-DD
    */
   static parseDate(dateStr: string): string | null {
-    if (!dateStr) return null;
-    const clean = dateStr.trim();
-
-    // DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
-    const dmyMatch = clean.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
-    if (dmyMatch) {
-      const day = dmyMatch[1].padStart(2, '0');
-      const month = dmyMatch[2].padStart(2, '0');
-      const year = dmyMatch[3];
-      return `${year}-${month}-${day}`;
-    }
-
-    // YYYY-MM-DD or YYYY/MM/DD
-    const ymdMatch = clean.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
-    if (ymdMatch) {
-      const year = ymdMatch[1];
-      const month = ymdMatch[2].padStart(2, '0');
-      const day = ymdMatch[3].padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    }
-
-    // DD-MMM-YYYY e.g. 15-Aug-2026 or 15/Aug/2026
-    const dMmmYMatch = clean.match(/^(\d{1,2})[\/\-\.\s]([a-zA-Z]{3,9})[\/\-\.\s](\d{4})$/);
-    if (dMmmYMatch) {
-      const day = dMmmYMatch[1].padStart(2, '0');
-      const monthName = dMmmYMatch[2].toLowerCase().slice(0, 3);
-      const months: Record<string, string> = {
-        jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
-        jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
-      };
-      if (months[monthName]) {
-        return `${dMmmYMatch[3]}-${months[monthName]}-${day}`;
-      }
-    }
-
-    const parsed = new Date(clean);
-    if (!isNaN(parsed.getTime())) {
-      return parsed.toISOString().split('T')[0];
-    }
-
-    return null;
+    // Shared day-first, timezone-safe parser: also handles 2-digit years, trailing times, and rejects
+    // impossible dates (e.g. 31-02) instead of letting them overflow into the next month.
+    return GenericCsvParser.parseDate(dateStr);
   }
 
   /**

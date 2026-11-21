@@ -65,29 +65,27 @@ export class QueryHelper {
     client?: PoolClient
   ): Promise<T | null> {
     const keys = Object.keys(data).filter((k) => data[k] !== undefined && k !== 'id');
+    const values: any[] = keys.map((k) => data[k]);
+    values.push(id);
+    let whereSql = `WHERE id = $${values.length}`;
+    if (additionalWhere) {
+      whereSql += ` AND (${this.shiftPlaceholders(additionalWhere, values.length)})`;
+      values.push(...additionalParams);
+    }
+
     if (keys.length === 0) {
-      return this.queryOne<T>(`SELECT * FROM "${tableName}" WHERE id = $1`, [id], client);
+      // Nothing to change: still honour the scoping clause so callers cannot read rows outside their scope.
+      return this.queryOne<T>(`SELECT * FROM "${tableName}" ${whereSql}`, values.slice(keys.length), client);
     }
 
     const setClauses = keys.map((k, idx) => `"${k}" = $${idx + 1}`).join(', ');
-    const values = keys.map((k) => data[k]);
-
-    const idParamIndex = values.length + 1;
-    values.push(id);
-
-    let whereSql = `WHERE id = $${idParamIndex}`;
-    if (additionalWhere) {
-      const offset = values.length;
-      let adjustedWhere = additionalWhere;
-      additionalParams.forEach((param, pIdx) => {
-        values.push(param);
-        adjustedWhere = adjustedWhere.replace(new RegExp(`\\$${pIdx + 1}`, 'g'), `$${offset + pIdx + 1}`);
-      });
-      whereSql += ` AND (${adjustedWhere})`;
-    }
-
     const sql = `UPDATE "${tableName}" SET ${setClauses}, updated_at = NOW() ${whereSql} RETURNING *`;
     return this.queryOne<T>(sql, values, client);
+  }
+
+  /** Renumber $1..$n in a SQL fragment by `offset` in a single pass (so $1 never collides with $10 or re-shifted values). */
+  private static shiftPlaceholders(fragment: string, offset: number): string {
+    return fragment.replace(/\$(\d+)/g, (_, n) => `$${Number(n) + offset}`);
   }
 
   /**
@@ -104,10 +102,8 @@ export class QueryHelper {
     let whereSql = `WHERE id = $1`;
 
     if (additionalWhere) {
-      additionalParams.forEach((param, pIdx) => {
-        values.push(param);
-        whereSql += ` AND (${additionalWhere.replace(new RegExp(`\\$${pIdx + 1}`, 'g'), `$${pIdx + 2}`)})`;
-      });
+      whereSql += ` AND (${this.shiftPlaceholders(additionalWhere, 1)})`;
+      values.push(...additionalParams);
     }
 
     const executor: QueryExecutor = client || pool;
@@ -126,7 +122,7 @@ export class QueryHelper {
       await client.query('COMMIT');
       return result;
     } catch (error) {
-      await client.query('ROLLBACK');
+      await client.query('ROLLBACK').catch(() => {});
       throw error;
     } finally {
       client.release();

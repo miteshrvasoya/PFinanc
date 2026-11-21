@@ -1,4 +1,5 @@
 import { QueryHelper } from '../../database/queryHelper.js';
+import { pickFields, notFoundError } from '../../utils/object.js';
 import { logAudit } from '../../utils/audit.js';
 
 export class RentService {
@@ -26,9 +27,10 @@ export class RentService {
 
   static async updateAgreement(id: string, householdId: string, currentUserId: string, data: any) {
     const old = await QueryHelper.queryOne('SELECT * FROM rent_agreements WHERE id = $1 AND household_id = $2', [id, householdId]);
-    if (!old) throw new Error('Rent agreement not found');
+    if (!old) throw notFoundError('Rent agreement not found', 'RENT_NOT_FOUND');
 
-    const updated = await QueryHelper.update('rent_agreements', id, data, 'household_id = $1', [householdId]);
+    const changes = pickFields(data, ['name', 'rent_type', 'property_name', 'counterparty', 'amount', 'frequency', 'start_date', 'end_date', 'status']);
+    const updated = await QueryHelper.update('rent_agreements', id, changes, 'household_id = $1', [householdId]);
     await logAudit(householdId, currentUserId, 'RENT', id, 'UPDATE', old, updated);
     return updated;
   }

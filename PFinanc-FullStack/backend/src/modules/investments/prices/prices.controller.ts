@@ -15,12 +15,13 @@ export class PricesController {
 
   static async setPrice(req: Request, res: Response, next: NextFunction) {
     try {
-      const { security_id, price, price_date } = req.body;
-      if (!security_id || price === undefined || price <= 0) {
+      const { security_id, price_date } = req.body;
+      const price = typeof req.body.price === 'number' ? req.body.price : parseFloat(req.body.price);
+      if (!security_id || !Number.isFinite(price) || price <= 0) {
         res.status(400).json({ success: false, error: { code: 'INVALID_PRICE', message: 'Valid security_id and positive price are required' } });
         return;
       }
-      await MarketDataService.setManualPrice(security_id, parseFloat(price), price_date);
+      await MarketDataService.setManualPrice(security_id, price, price_date);
       res.json({ success: true, message: 'Price updated successfully' });
     } catch (error) {
       next(error);

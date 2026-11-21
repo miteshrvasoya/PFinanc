@@ -131,6 +131,13 @@ export class AuthService {
       throw error;
     }
 
+    if (user.status !== 'ACTIVE') {
+      const error: any = new Error('This account is not active');
+      error.status = 403;
+      error.code = 'ACCOUNT_INACTIVE';
+      throw error;
+    }
+
     await QueryHelper.update('users', user.id, { last_login_at: new Date().toISOString() });
 
     const households = await QueryHelper.query(

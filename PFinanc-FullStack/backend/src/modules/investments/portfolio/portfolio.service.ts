@@ -38,23 +38,38 @@ export class PortfolioService {
       }, 0);
     };
 
-    let rate = 0.1; // initial 10% guess
-    const maxIterations = 100;
-    const tolerance = 1e-6;
+    const toPercent = (r: number) => Math.round(r * 10000) / 100; // e.g. 0.1542 -> 15.42
 
-    for (let i = 0; i < maxIterations; i++) {
+    // 1. Newton-Raphson from a 10% guess, kept inside the valid domain (r > -100%).
+    let rate = 0.1;
+    const tolerance = 1e-7;
+    for (let i = 0; i < 100; i++) {
       const fValue = npv(rate);
       const fPrime = dnpv(rate);
-
-      if (Math.abs(fPrime) < 1e-10) break;
-      const nextRate = rate - fValue / fPrime;
-
-      if (Math.abs(nextRate - rate) < tolerance) {
-        return Math.round(nextRate * 10000) / 100; // Return as percentage e.g. 15.42%
-      }
+      if (!Number.isFinite(fValue) || !Number.isFinite(fPrime) || Math.abs(fPrime) < 1e-10) break;
+      let nextRate = rate - fValue / fPrime;
+      if (nextRate <= -0.9999) nextRate = (rate - 0.9999) / 2; // halve the step instead of leaving the domain
+      if (Math.abs(nextRate - rate) < tolerance) return toPercent(nextRate);
       rate = nextRate;
     }
 
+    // 2. Fallback: bisection over a wide bracket (NPV is monotonic for conventional cash flows).
+    let lo = -0.9999;
+    let hi = 10;
+    let fLo = npv(lo);
+    const fHi = npv(hi);
+    if (!Number.isFinite(fLo) || !Number.isFinite(fHi) || fLo * fHi > 0) return null;
+    for (let i = 0; i < 200; i++) {
+      const mid = (lo + hi) / 2;
+      const fMid = npv(mid);
+      if (Math.abs(fMid) < 1e-6 || hi - lo < tolerance) return toPercent(mid);
+      if (fLo * fMid < 0) {
+        hi = mid;
+      } else {
+        lo = mid;
+        fLo = fMid;
+      }
+    }
     return null;
   }
 
@@ -78,11 +93,13 @@ export class PortfolioService {
       FixedDepositsService.list(householdId, userId),
       RetirementService.listAccounts(householdId, userId),
       QueryHelper.query<{ transaction_type: string; transaction_date: string; net_amount: string }>(
-        `SELECT transaction_type, transaction_date, CAST(net_amount AS FLOAT) AS net_amount
-         FROM investment_transactions
-         WHERE household_id = $1 AND status = 'CONFIRMED'
-         ORDER BY transaction_date ASC`,
-        [householdId]
+        `SELECT it.transaction_type, it.transaction_date, CAST(it.net_amount AS FLOAT) AS net_amount
+         FROM investment_transactions it
+         JOIN accounts a ON a.id = it.investment_account_id
+         WHERE it.household_id = $1 AND it.status = 'CONFIRMED' AND it.security_id IS NOT NULL
+           ${userId ? 'AND a.owner_user_id = $2' : ''}
+         ORDER BY it.transaction_date ASC`,
+        userId ? [householdId, userId] : [householdId]
       ),
       QueryHelper.query<{ asset_type: string; total_cost: number; total_value: number }>(
         physicalSql,
@@ -209,8 +226,11 @@ export class PortfolioService {
       }
     });
 
-    if (totalCurrentValue > 0) {
-      cashFlows.push({ amount: totalCurrentValue, date: new Date() });
+    // Terminal value must cover only the assets whose cash flows are in the series (market securities);
+    // FDs, retirement and physical assets have no flows here and would inflate the XIRR.
+    const securitiesValue = stockValue + mfValue + etfValue;
+    if (securitiesValue > 0) {
+      cashFlows.push({ amount: securitiesValue, date: new Date() });
     }
 
     const xirr = this.calculateXIRR(cashFlows);

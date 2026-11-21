@@ -30,6 +30,12 @@ export class HouseholdsService {
   static async updateHousehold(householdId: string, userId: string, data: { name?: string; default_currency?: string }) {
     const oldHousehold = await QueryHelper.queryOne(`SELECT * FROM households WHERE id = $1`, [householdId]);
     const updated = await QueryHelper.update('households', householdId, data);
+    if (!updated) {
+      const error: any = new Error('Household not found');
+      error.status = 404;
+      error.code = 'HOUSEHOLD_NOT_FOUND';
+      throw error;
+    }
     await logAudit(householdId, userId, 'HOUSEHOLD', householdId, 'UPDATE', oldHousehold, updated);
     return updated;
   }
@@ -86,7 +92,7 @@ export class HouseholdsService {
       throw error;
     }
 
-    const updated = await QueryHelper.update('household_members', memberId, { role });
+    const updated = await QueryHelper.update('household_members', memberId, { role }, 'household_id = $1', [householdId]);
     await logAudit(householdId, currentUserId, 'HOUSEHOLD_MEMBER', memberId, 'UPDATE', oldMember, updated);
     return updated;
   }

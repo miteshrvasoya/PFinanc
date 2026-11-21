@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
-import { formatINR } from '../../lib/formatters';
+import { formatINR, todayLocal } from '../../lib/formatters';
 import {
   TrendingUp,
   Plus,
@@ -41,7 +41,7 @@ export const StockSetupStep: React.FC<StockSetupStepProps> = ({ onNext, onSkip }
     quantity: '',
     average_cost: '',
     current_price: '',
-    as_of_date: new Date().toISOString().split('T')[0],
+    as_of_date: todayLocal(),
   });
 
   // Custom Security Form
@@ -177,7 +177,7 @@ export const StockSetupStep: React.FC<StockSetupStepProps> = ({ onNext, onSkip }
         setSubAction(null);
         setSelectedSec(null);
         setSearchQuery('');
-        setHoldingForm({ quantity: '', average_cost: '', current_price: '', as_of_date: new Date().toISOString().split('T')[0] });
+        setHoldingForm({ quantity: '', average_cost: '', current_price: '', as_of_date: todayLocal() });
         loadData();
       } else {
         alert(res.error?.message || 'Failed to save holding');

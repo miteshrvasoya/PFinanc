@@ -1,4 +1,5 @@
 import { QueryHelper } from '../../database/queryHelper.js';
+import { assertCategoryUsable } from '../../middleware/rbac.js';
 
 export interface ClassificationResult {
   categoryId: string | null;
@@ -79,6 +80,12 @@ export class ClassificationService {
 
       if (rule.match_type === 'EXACT') {
         matched = raw === pat;
+      } else if (rule.match_type === 'REGEX') {
+        try {
+          matched = new RegExp(rule.pattern, 'i').test(description.trim());
+        } catch {
+          matched = false; // invalid stored pattern: never match rather than crash classification
+        }
       } else if (rule.match_type === 'STARTS_WITH') {
         matched = raw.startsWith(pat);
       } else {
@@ -154,8 +161,20 @@ export class ClassificationService {
       transaction_type?: 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'OTHER';
     }
   ) {
-    const pattern = data.pattern.trim().toUpperCase();
     const matchType = data.match_type || 'CONTAINS';
+    // Regex patterns keep their case: upper-casing turns escapes like \d or \s into \D / \S.
+    const pattern = matchType === 'REGEX' ? data.pattern.trim() : data.pattern.trim().toUpperCase();
+    if (matchType === 'REGEX') {
+      try {
+        new RegExp(pattern, 'i');
+      } catch (e: any) {
+        const error: any = new Error(`Invalid regular expression: ${e.message}`);
+        error.status = 400;
+        error.code = 'INVALID_PATTERN';
+        throw error;
+      }
+    }
+    await assertCategoryUsable(data.category_id, householdId);
     const txType = data.transaction_type || 'EXPENSE';
 
     const existing = await QueryHelper.queryOne<{ id: string }>(

@@ -1,4 +1,6 @@
 import { QueryHelper } from '../../database/queryHelper.js';
+import { toLocalDateString } from '../../utils/date.js';
+import { assertHouseholdMember } from '../../middleware/rbac.js';
 import { logAudit } from '../../utils/audit.js';
 
 export interface PhysicalAsset {
@@ -76,6 +78,7 @@ export class PhysicalAssetsService {
   }
 
   static async createAsset(householdId: string, currentUserId: string, data: any) {
+    await assertHouseholdMember(data.owner_user_id, householdId);
     const asset = await QueryHelper.insert('physical_assets', {
       household_id: householdId,
       owner_user_id: data.owner_user_id || currentUserId,
@@ -85,7 +88,7 @@ export class PhysicalAssetsService {
       unit: data.unit || 'units',
       purchase_cost: data.purchase_cost || 0.00,
       current_value: data.current_value || data.purchase_cost || 0.00,
-      as_of_date: data.as_of_date || new Date().toISOString().split('T')[0],
+      as_of_date: data.as_of_date || toLocalDateString(),
       notes: data.notes || null,
     });
 

@@ -1,4 +1,6 @@
 import { QueryHelper } from '../../database/queryHelper.js';
+import { pickFields, notFoundError } from '../../utils/object.js';
+import { assertCategoryUsable } from '../../middleware/rbac.js';
 import { logAudit } from '../../utils/audit.js';
 
 export class BudgetsService {
@@ -14,6 +16,7 @@ export class BudgetsService {
   }
 
   static async createBudget(householdId: string, currentUserId: string, data: any) {
+    await assertCategoryUsable(data.category_id, householdId);
     const budget = await QueryHelper.insert('budgets', {
       household_id: householdId,
       category_id: data.category_id || null,
@@ -29,16 +32,18 @@ export class BudgetsService {
 
   static async updateBudget(id: string, householdId: string, currentUserId: string, data: any) {
     const old = await QueryHelper.queryOne('SELECT * FROM budgets WHERE id = $1 AND household_id = $2', [id, householdId]);
-    if (!old) throw new Error('Budget not found');
+    if (!old) throw notFoundError('Budget not found', 'BUDGET_NOT_FOUND');
 
-    const updated = await QueryHelper.update('budgets', id, data, 'household_id = $1', [householdId]);
+    const changes = pickFields(data, ['category_id', 'amount', 'period', 'start_date', 'end_date']);
+    if ('category_id' in changes) await assertCategoryUsable(changes.category_id, householdId);
+    const updated = await QueryHelper.update('budgets', id, changes, 'household_id = $1', [householdId]);
     await logAudit(householdId, currentUserId, 'BUDGET', id, 'UPDATE', old, updated);
     return updated;
   }
 
   static async deleteBudget(id: string, householdId: string, currentUserId: string) {
     const old = await QueryHelper.queryOne('SELECT * FROM budgets WHERE id = $1 AND household_id = $2', [id, householdId]);
-    if (!old) throw new Error('Budget not found');
+    if (!old) throw notFoundError('Budget not found', 'BUDGET_NOT_FOUND');
 
     await QueryHelper.query('DELETE FROM budgets WHERE id = $1 AND household_id = $2', [id, householdId]);
     await logAudit(householdId, currentUserId, 'BUDGET', id, 'DELETE', old, null);

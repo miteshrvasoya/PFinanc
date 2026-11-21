@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../lib/api';
-import { formatINR } from '../../lib/formatters';
+import { formatINR, todayLocal } from '../../lib/formatters';
 import { UniversalImportReview } from './UniversalImportReview';
 import {
   Wallet,
@@ -41,7 +41,7 @@ export const BankSetupStep: React.FC<BankSetupStepProps> = ({ onNext, onSkip }) 
   // Current Balance State
   const [balanceData, setBalanceData] = useState({
     current_balance: '',
-    as_of_date: new Date().toISOString().split('T')[0],
+    as_of_date: todayLocal(),
   });
 
   // CSV Import State
@@ -112,7 +112,7 @@ export const BankSetupStep: React.FC<BankSetupStepProps> = ({ onNext, onSkip }) 
       if (res.success) {
         setSubAction(null);
         setActiveCreatedAccount(null);
-        setBalanceData({ current_balance: '', as_of_date: new Date().toISOString().split('T')[0] });
+        setBalanceData({ current_balance: '', as_of_date: todayLocal() });
         loadData();
       } else {
         alert(res.error?.message || 'Failed to update balance');

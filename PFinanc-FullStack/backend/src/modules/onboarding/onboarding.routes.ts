@@ -14,7 +14,7 @@ const updateStepSchema = z.object({
 });
 
 router.use(authenticate);
-router.use(requireHouseholdAccess());
+router.use(requireHouseholdAccess(undefined, { allowViewerWrites: true }));
 
 router.get('/status', OnboardingController.getStatus);
 router.post('/step', validate({ body: updateStepSchema }), OnboardingController.updateStep);

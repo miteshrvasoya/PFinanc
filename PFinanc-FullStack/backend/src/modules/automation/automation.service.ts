@@ -4,6 +4,19 @@ import { DeterministicTransactionParser, ParsedTransaction } from './parser/Dete
 import { AITransactionParser } from './parser/AITransactionParser.js';
 import { ClassificationService } from '../classification/classification.service.js';
 
+/**
+ * Map a parser type onto a ledger transaction_type. Parsers can emit WITHDRAWAL / UNKNOWN (not valid
+ * ledger types) and TRANSFER, which must never be booked as a bare row: without a transfers record it
+ * counts as neither debit nor credit and the money silently vanishes from balances.
+ */
+function toLedgerType(parsedType: string | null | undefined, direction: string | null | undefined): 'EXPENSE' | 'INCOME' | 'FEE' | 'REFUND' {
+  if (parsedType === 'FEE' || parsedType === 'REFUND' || parsedType === 'EXPENSE' || parsedType === 'INCOME') return parsedType;
+  return direction === 'CREDIT' ? 'INCOME' : 'EXPENSE';
+}
+
+/** Types that are reliable enough to book without a human looking at them. */
+const AUTO_APPROVABLE = new Set(['EXPENSE', 'INCOME', 'FEE', 'REFUND', 'WITHDRAWAL']);
+
 export class AutomationService {
 
   static async syncCandidates(householdId: string, userId: string, deviceId: string, candidates: any[]) {
@@ -23,21 +36,34 @@ export class AutomationService {
     ) || { approval_mode: 'MANUAL_APPROVAL', confidence_threshold: 0.95, ai_enabled: false };
 
     for (const raw of candidates) {
+      let currentEventId: string | null = null;
       try {
         // 1. Audit Log
-        const eventId = await QueryHelper.insert('sms_ingestion_events', {
-          user_id: userId,
-          device_id: deviceId,
-          message_hash: raw.messageHash,
-          sender: raw.sender,
-          received_at: raw.receivedAt,
-          processing_status: 'PROCESSING'
-        }).then(res => res.id).catch(() => null); // Ignore unique constraint violation if already processed
+        const inserted = await QueryHelper.queryOne<{ id: string }>(
+          `INSERT INTO sms_ingestion_events (user_id, device_id, message_hash, sender, received_at, processing_status)
+           VALUES ($1, $2, $3, $4, $5, 'PROCESSING')
+           ON CONFLICT (user_id, message_hash) DO NOTHING
+           RETURNING id`,
+          [userId, deviceId, raw.messageHash, raw.sender, raw.receivedAt]
+        );
+        let eventId = inserted?.id || null;
+        if (!eventId) {
+          // Already seen: only retry messages whose previous processing failed.
+          const prior = await QueryHelper.queryOne<{ id: string; processing_status: string }>(
+            `SELECT id, processing_status FROM sms_ingestion_events WHERE user_id = $1 AND message_hash = $2`,
+            [userId, raw.messageHash]
+          );
+          if (prior?.processing_status === 'FAILED') {
+            eventId = prior.id;
+            await QueryHelper.update('sms_ingestion_events', eventId, { processing_status: 'PROCESSING' });
+          }
+        }
 
         if (!eventId) {
           results.push({ messageHash: raw.messageHash, status: 'DUPLICATE_EVENT' });
           continue;
         }
+        currentEventId = eventId;
 
         // 2. Parse
         let parsed: ParsedTransaction | null = await DeterministicTransactionParser.parse(raw.body, raw.sender, new Date(raw.receivedAt), householdId);
@@ -66,8 +92,12 @@ export class AutomationService {
         let accountId = null;
         if (parsed.accountSuffix) {
           const acc = await QueryHelper.queryOne<{ id: string }>(
-            `SELECT id FROM accounts WHERE household_id = $1 AND name ILIKE $2 LIMIT 1`,
-            [householdId, `%${parsed.accountSuffix}%`]
+            `SELECT id FROM accounts
+             WHERE household_id = $1 AND is_active = true
+               AND (account_number_masked ILIKE $2 OR name ILIKE $3)
+             ORDER BY (account_number_masked ILIKE $2) DESC
+             LIMIT 1`,
+            [householdId, `%${parsed.accountSuffix}`, `%${parsed.accountSuffix}%`]
           );
           if (acc) accountId = acc.id;
         }
@@ -78,9 +108,9 @@ export class AutomationService {
           const dateStr = parsed.transactionDate.toISOString().split('T')[0];
 
           // Base query conditions
-          let txQuery = `SELECT id FROM transactions WHERE household_id = $1 AND amount = $2 AND transaction_date = $3 AND transaction_type = $4`;
+          let txQuery = `SELECT id FROM transactions WHERE household_id = $1 AND amount = $2 AND transaction_date = $3 AND transaction_type = $4 AND status <> 'VOID'`;
           let candQuery = `SELECT id FROM transaction_candidates WHERE household_id = $1 AND amount = $2 AND transaction_date = $3 AND transaction_type = $4 AND status IN ('NEEDS_REVIEW', 'APPROVED')`;
-          const queryParams: any[] = [householdId, parsed.amount, dateStr, parsed.transactionType];
+          const queryParams: any[] = [householdId, parsed.amount, dateStr, toLedgerType(parsed.transactionType, parsed.direction)];
 
           if (accountId) {
             txQuery += ` AND account_id = $5`;
@@ -109,7 +139,13 @@ export class AutomationService {
 
         // 5. Candidate Creation
         let status = 'NEEDS_REVIEW';
-        if (settings.approval_mode === 'AUTO_APPROVE_HIGH_CONFIDENCE' && parsed.confidence >= settings.confidence_threshold && accountId && parsed.amount) {
+        if (
+          settings.approval_mode === 'AUTO_APPROVE_HIGH_CONFIDENCE' &&
+          parsed.confidence >= settings.confidence_threshold &&
+          accountId &&
+          parsed.amount &&
+          AUTO_APPROVABLE.has(parsed.transactionType)
+        ) {
           status = 'APPROVED';
         }
 
@@ -123,7 +159,7 @@ export class AutomationService {
           amount: parsed.amount,
           currency: parsed.currency,
           direction: parsed.direction,
-          transaction_type: parsed.transactionType,
+          transaction_type: toLedgerType(parsed.transactionType, parsed.direction),
           merchant: parsed.merchant,
           transaction_date: parsed.transactionDate?.toISOString().split('T')[0],
           reference_number: parsed.referenceNumber,
@@ -144,11 +180,12 @@ export class AutomationService {
           await TransactionsService.createTransaction(householdId, userId, {
             account_id: accountId,
             category_id: categoryId,
-            transaction_type: parsed.transactionType,
+            transaction_type: toLedgerType(parsed.transactionType, parsed.direction),
             amount: parsed.amount,
             currency: parsed.currency,
             transaction_date: parsed.transactionDate?.toISOString().split('T')[0],
             merchant_name: parsed.merchant,
+            description: parsed.merchant || `SMS transaction from ${raw.sender || 'bank'}`,
             source_type: 'SMS',
             source_reference: raw.messageHash,
             source_candidate_id: candidate.id
@@ -158,6 +195,10 @@ export class AutomationService {
         results.push({ messageHash: raw.messageHash, status: 'CANDIDATE_CREATED', candidateId: candidate.id });
 
       } catch (err: any) {
+        if (currentEventId) {
+          // Mark as FAILED so the device can resend it instead of it being dropped as a duplicate.
+          await QueryHelper.update('sms_ingestion_events', currentEventId, { processing_status: 'FAILED' }).catch(() => {});
+        }
         results.push({ messageHash: raw.messageHash, status: 'ERROR', error: err.message });
       }
     }
@@ -171,24 +212,40 @@ export class AutomationService {
 
   static async approveCandidate(id: string, householdId: string, userId: string, overrides: any) {
     const candidate = await QueryHelper.queryOne(`SELECT * FROM transaction_candidates WHERE id = $1 AND household_id = $2`, [id, householdId]);
-    if (!candidate || candidate.status !== 'NEEDS_REVIEW') throw new Error('Candidate not found or not in review state');
+    if (!candidate || candidate.status !== 'NEEDS_REVIEW') {
+      const error: any = new Error('Candidate not found or not in review state');
+      error.status = 404;
+      error.code = 'CANDIDATE_NOT_FOUND';
+      throw error;
+    }
 
     // Prevent duplicate approval
     const exists = await QueryHelper.queryOne(`SELECT id FROM transactions WHERE source_candidate_id = $1`, [id]);
     if (exists) {
-      await QueryHelper.update('transaction_candidates', id, { status: 'DUPLICATE' });
-      throw new Error('Candidate already processed');
+      await QueryHelper.update('transaction_candidates', id, { status: 'DUPLICATE' }, 'household_id = $1', [householdId]);
+      const error: any = new Error('Candidate already processed');
+      error.status = 409;
+      error.code = 'CANDIDATE_ALREADY_PROCESSED';
+      throw error;
+    }
+
+    const requestedType = overrides.transaction_type || candidate.transaction_type;
+    if (requestedType === 'TRANSFER') {
+      const error: any = new Error('Transfers must be recorded via the Transfers page so both accounts are updated');
+      error.status = 400;
+      error.code = 'USE_TRANSFER_SERVICE';
+      throw error;
     }
 
     const txData = {
       account_id: overrides.account_id || candidate.account_id,
       category_id: overrides.category_id || candidate.category_suggestion,
-      transaction_type: overrides.transaction_type || candidate.transaction_type,
+      transaction_type: toLedgerType(requestedType, candidate.direction),
       amount: overrides.amount || candidate.amount,
       currency: overrides.currency || candidate.currency,
       transaction_date: overrides.transaction_date || candidate.transaction_date,
       merchant_name: overrides.merchant || candidate.merchant,
-      description: overrides.description || candidate.description,
+      description: overrides.description || candidate.description || candidate.merchant || 'SMS transaction',
       source_type: 'SMS',
       source_reference: candidate.source_reference,
       source_candidate_id: id
@@ -196,7 +253,7 @@ export class AutomationService {
 
     const transaction = await TransactionsService.createTransaction(householdId, userId, txData);
 
-    await QueryHelper.update('transaction_candidates', id, { status: 'APPROVED' });
+    await QueryHelper.update('transaction_candidates', id, { status: 'APPROVED' }, 'household_id = $1', [householdId]);
 
     return transaction;
   }

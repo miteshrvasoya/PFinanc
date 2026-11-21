@@ -1,4 +1,5 @@
 import { QueryHelper } from '../../../database/queryHelper.js';
+import { toLocalDateString } from '../../../utils/date.js';
 
 export interface MarketQuote {
   securityId: string;
@@ -34,7 +35,7 @@ export class YahooFinanceProvider implements IMarketDataProvider {
     securities: Array<{ id: string; symbol: string; isin?: string | null; exchange: string; security_type: string }>
   ): Promise<Map<string, MarketQuote>> {
     const results = new Map<string, MarketQuote>();
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateString();
 
     // Filter to securities Yahoo supports (not MF)
     const eligible = securities.filter(s => s.security_type !== 'MUTUAL_FUND');
@@ -116,7 +117,7 @@ export class MFApiProvider implements IMarketDataProvider {
     securities: Array<{ id: string; symbol: string; isin?: string | null; exchange: string; security_type: string }>
   ): Promise<Map<string, MarketQuote>> {
     const results = new Map<string, MarketQuote>();
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateString();
 
     const mfSecurities = securities.filter(s => s.security_type === 'MUTUAL_FUND');
     if (mfSecurities.length === 0) return results;
@@ -215,7 +216,7 @@ export class IndianMarketDataProvider implements IMarketDataProvider {
 
   async getQuotes(securities: Array<{ id: string; symbol: string; isin?: string | null; exchange: string; security_type: string }>): Promise<Map<string, MarketQuote>> {
     const results = new Map<string, MarketQuote>();
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateString();
 
     for (const sec of securities) {
       const normalizedSym = sec.symbol.toUpperCase().replace(/[^A-Z0-9_]/g, '');
@@ -274,8 +275,12 @@ export class MarketDataService {
       securities = await QueryHelper.query(
         `SELECT DISTINCT s.id, s.symbol, s.isin, s.exchange, s.security_type
          FROM securities s
-         JOIN investment_transactions it ON it.security_id = s.id
-         WHERE it.household_id = $1 AND it.status <> 'VOID' AND s.is_active = true`,
+         WHERE s.is_active = true AND (
+           EXISTS (SELECT 1 FROM investment_transactions it
+                   WHERE it.security_id = s.id AND it.household_id = $1 AND it.status <> 'VOID')
+           -- holdings that only exist as imported snapshots must be priced too
+           OR EXISTS (SELECT 1 FROM investment_holdings ih WHERE ih.instrument_id = s.id AND ih.family_id = $1)
+         )`,
         [householdId]
       );
     }
@@ -364,7 +369,7 @@ export class MarketDataService {
    * Set price manually for a security on a given date
    */
   static async setManualPrice(securityId: string, price: number, date?: string) {
-    const priceDate = date || new Date().toISOString().split('T')[0];
+    const priceDate = date || toLocalDateString();
     return QueryHelper.query(
       `INSERT INTO security_prices (security_id, price_date, close, source, is_stale)
        VALUES ($1, $2, $3, 'MANUAL_ENTRY', false)

@@ -19,6 +19,8 @@ export interface EnrichedAiResult {
   isDuplicate: boolean;
   duplicateReason: string | null;
   aiNotes: string;
+  /** Ledger fingerprint; stored as transactions.import_hash so re-uploads are detected as duplicates. */
+  fingerprint: string | null;
 }
 
 export class StatementPostProcessor {
@@ -64,6 +66,8 @@ export class StatementPostProcessor {
         spr.transaction_date,
         spr.description,
         spr.amount,
+        spr.debit_amount,
+        spr.credit_amount,
         spr.reference,
         spr.balance
        FROM statement_ai_results sar
@@ -77,7 +81,12 @@ export class StatementPostProcessor {
     const enriched: EnrichedAiResult[] = [];
 
     for (const r of rows) {
-      const amountVal = Number(r.amount) || 0;
+      // Direction comes from the parsed statement columns when available; the AI's guess is only a fallback.
+      const debit = Math.abs(Number(r.debit_amount) || 0);
+      const credit = Math.abs(Number(r.credit_amount) || 0);
+      const direction: 'DEBIT' | 'CREDIT' =
+        credit > 0 && debit === 0 ? 'CREDIT' : debit > 0 && credit === 0 ? 'DEBIT' : r.direction === 'CREDIT' ? 'CREDIT' : 'DEBIT';
+      const amountVal = Math.abs(Number(r.amount) || 0) || credit || debit;
       let dateVal = null;
       if (r.transaction_date) {
         if (r.transaction_date instanceof Date) {
@@ -94,9 +103,10 @@ export class StatementPostProcessor {
       // Fingerprint check
       let isDuplicate = false;
       let duplicateReason: string | null = null;
+      let fingerprint: string | null = null;
 
       if (dateVal && amountVal > 0) {
-        const fingerprint = generateTransactionFingerprint({
+        fingerprint = generateTransactionFingerprint({
           accountId,
           transactionDate: dateVal,
           amount: amountVal,
@@ -138,7 +148,7 @@ export class StatementPostProcessor {
         date: dateVal,
         description: r.description,
         amount: amountVal,
-        direction: r.direction,
+        direction,
         transactionType: r.transaction_type,
         merchant: r.merchant,
         suggestedCategory: r.suggested_category,
@@ -149,6 +159,7 @@ export class StatementPostProcessor {
         isDuplicate,
         duplicateReason,
         aiNotes: r.ai_notes || '',
+        fingerprint,
       });
     }
 

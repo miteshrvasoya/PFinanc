@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
-import { formatINR } from '../../lib/formatters';
+import { formatINR, todayLocal } from '../../lib/formatters';
 import {
   Coins,
   Building,
@@ -32,7 +32,7 @@ export const OtherAssetsSetupStep: React.FC<OtherAssetsSetupStepProps> = ({ onNe
     unit: 'grams',
     purchase_cost: '120000',
     current_value: '210000',
-    as_of_date: new Date().toISOString().split('T')[0],
+    as_of_date: todayLocal(),
   });
 
   const [fdForm, setFdForm] = useState({
@@ -40,7 +40,7 @@ export const OtherAssetsSetupStep: React.FC<OtherAssetsSetupStepProps> = ({ onNe
     principal_amount: '100000',
     interest_rate: '7.25',
     compounding_frequency: 'QUARTERLY',
-    start_date: new Date().toISOString().split('T')[0],
+    start_date: todayLocal(),
     maturity_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   });
 
@@ -92,7 +92,7 @@ export const OtherAssetsSetupStep: React.FC<OtherAssetsSetupStepProps> = ({ onNe
           unit: 'grams',
           purchase_cost: '',
           current_value: '',
-          as_of_date: new Date().toISOString().split('T')[0],
+          as_of_date: todayLocal(),
         });
         loadData();
       }
@@ -111,7 +111,7 @@ export const OtherAssetsSetupStep: React.FC<OtherAssetsSetupStepProps> = ({ onNe
           principal_amount: '',
           interest_rate: '7.25',
           compounding_frequency: 'QUARTERLY',
-          start_date: new Date().toISOString().split('T')[0],
+          start_date: todayLocal(),
           maturity_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         });
         loadData();

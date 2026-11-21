@@ -15,8 +15,7 @@ const createInvitationSchema = z.object({
 
 const acceptInvitationSchema = z.object({
   name: z.string().optional(),
-  password: z.string().min(6).optional(),
-  existingUserId: z.string().uuid().optional(),
+  password: z.string().min(6),
 });
 
 // Public invitation inspection and acceptance routes

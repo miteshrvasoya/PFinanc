@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
-import { formatINR } from '../../lib/formatters';
+import { formatINR, todayLocal } from '../../lib/formatters';
 import {
   X,
   TrendingUp,
@@ -38,7 +38,7 @@ export const RecordTradeModal: React.FC<RecordTradeModalProps> = ({
     investment_account_id: '',
     funding_account_id: '',
     dividend_account_id: '',
-    transaction_date: new Date().toISOString().split('T')[0],
+    transaction_date: todayLocal(),
     quantity: '',
     price_per_unit: '',
     fees: '0',

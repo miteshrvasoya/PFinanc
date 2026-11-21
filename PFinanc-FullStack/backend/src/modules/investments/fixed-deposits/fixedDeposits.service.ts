@@ -1,4 +1,6 @@
 import { QueryHelper } from '../../../database/queryHelper.js';
+import { pickFields } from '../../../utils/object.js';
+import { assertAccountInHousehold, assertHouseholdMember } from '../../../middleware/rbac.js';
 import { logAudit } from '../../../utils/audit.js';
 
 export class FixedDepositsService {
@@ -91,6 +93,8 @@ export class FixedDepositsService {
   }
 
   static async create(userId: string, data: any) {
+    await assertHouseholdMember(data.owner_user_id, data.household_id);
+    if (data.account_id) await assertAccountInHousehold(data.account_id, data.household_id);
     const principal = parseFloat(data.principal_amount);
     const rate = parseFloat(data.interest_rate);
     const freq = data.compounding_frequency || 'QUARTERLY';
@@ -137,7 +141,13 @@ export class FixedDepositsService {
       throw error;
     }
 
-    const updated = await QueryHelper.update('fixed_deposits', id, data, 'household_id = $1', [householdId]);
+    const changes = pickFields(data, [
+      'institution_name', 'fd_number_masked', 'principal_amount', 'interest_rate', 'compounding_frequency',
+      'start_date', 'maturity_date', 'maturity_amount', 'current_value', 'status', 'notes', 'account_id', 'owner_user_id',
+    ]);
+    if (changes.account_id) await assertAccountInHousehold(changes.account_id, householdId);
+    if (changes.owner_user_id) await assertHouseholdMember(changes.owner_user_id, householdId);
+    const updated = await QueryHelper.update('fixed_deposits', id, changes, 'household_id = $1', [householdId]);
     await logAudit(householdId, userId, 'FIXED_DEPOSIT', id, 'UPDATE', old, updated);
     return updated;
   }

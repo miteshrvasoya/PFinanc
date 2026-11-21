@@ -40,7 +40,7 @@ export class AccountsController {
   static async createAccount(req: Request, res: Response, next: NextFunction) {
     try {
       const householdId = getHouseholdId(req);
-      const account = await AccountsService.createAccount(householdId, req.user!.id, req.body);
+      const account = await AccountsService.createAccount(householdId, req.user!.id, req.body, req.householdMembership?.role);
       res.status(201).json({ success: true, data: account });
     } catch (error) {
       next(error);
@@ -58,7 +58,7 @@ export class AccountsController {
         return;
       }
 
-      const account = await AccountsService.updateAccount(id, householdId, req.user!.id, req.body);
+      const account = await AccountsService.updateAccount(id, householdId, req.user!.id, req.body, req.householdMembership?.role);
       res.json({ success: true, data: account });
     } catch (error) {
       next(error);

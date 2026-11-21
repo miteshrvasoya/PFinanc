@@ -1,5 +1,7 @@
 import { QueryHelper } from '../../../database/queryHelper.js';
+import { toLocalDateString } from '../../../utils/date.js';
 import { logAudit } from '../../../utils/audit.js';
+import { assertAccountInHousehold } from '../../../middleware/rbac.js';
 
 export interface CreateInvestmentTransactionInput {
   household_id: string;
@@ -24,20 +26,38 @@ export interface CreateInvestmentTransactionInput {
 
 export class InvestmentTransactionsService {
   static async create(userId: string, data: CreateInvestmentTransactionInput) {
+    await assertAccountInHousehold(data.investment_account_id, data.household_id);
+    if (data.funding_account_id) await assertAccountInHousehold(data.funding_account_id, data.household_id);
+    if (data.dividend_account_id) await assertAccountInHousehold(data.dividend_account_id, data.household_id);
+    if (data.security_id) {
+      const sec = await QueryHelper.queryOne(`SELECT 1 FROM securities WHERE id = $1`, [data.security_id]);
+      if (!sec) {
+        const error: any = new Error('Security not found');
+        error.status = 400;
+        error.code = 'SECURITY_NOT_FOUND';
+        throw error;
+      }
+    }
     const status = data.status || 'CONFIRMED';
-    const txDate = data.transaction_date || new Date().toISOString().split('T')[0];
-    const fees = data.fees || 0;
-    const taxes = data.taxes || 0;
+    const txDate = data.transaction_date || toLocalDateString();
+    // Inputs arrive unvalidated from JSON/CSV: coerce everything so "10" + 5 can never concatenate.
+    const num = (v: unknown): number | null => {
+      if (v === undefined || v === null || v === '') return null;
+      const n = typeof v === 'number' ? v : parseFloat(String(v));
+      return Number.isFinite(n) ? n : null;
+    };
+    const fees = num(data.fees) ?? 0;
+    const taxes = num(data.taxes) ?? 0;
 
-    let qty = data.quantity !== undefined && data.quantity !== null ? parseFloat(String(data.quantity)) : null;
-    let price = data.price_per_unit !== undefined && data.price_per_unit !== null ? parseFloat(String(data.price_per_unit)) : null;
+    let qty = num(data.quantity);
+    let price = num(data.price_per_unit);
 
-    let gross = data.gross_amount !== undefined ? parseFloat(String(data.gross_amount)) : 0;
+    let gross = num(data.gross_amount) ?? 0;
     if (qty && price && gross === 0) {
       gross = qty * price;
     }
 
-    let net = data.net_amount !== undefined ? parseFloat(String(data.net_amount)) : 0;
+    let net = num(data.net_amount) ?? 0;
     if (net === 0) {
       if (data.transaction_type === 'BUY' || data.transaction_type === 'SIP') {
         net = gross + fees + taxes;
@@ -283,10 +303,14 @@ export class InvestmentTransactionsService {
       throw error;
     }
 
+    if (tx.status === 'VOID') {
+      return this.getById(id, householdId);
+    }
+
     await QueryHelper.transaction(async (client) => {
-      await QueryHelper.update('investment_transactions', id, { status: 'VOID' }, '', [], client);
+      await QueryHelper.update('investment_transactions', id, { status: 'VOID' }, 'household_id = $1', [householdId], client);
       if (tx.linked_cash_transaction_id) {
-        await QueryHelper.update('transactions', tx.linked_cash_transaction_id, { status: 'VOID' }, '', [], client);
+        await QueryHelper.update('transactions', tx.linked_cash_transaction_id, { status: 'VOID' }, 'household_id = $1', [householdId], client);
       }
       await logAudit(householdId, userId, 'INVESTMENT_TRANSACTION', id, 'VOID', tx, { ...tx, status: 'VOID' }, client);
     });

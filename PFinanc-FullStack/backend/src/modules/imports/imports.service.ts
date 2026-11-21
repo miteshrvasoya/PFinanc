@@ -3,6 +3,22 @@ import { QueryHelper } from '../../database/queryHelper.js';
 import { generateTransactionFingerprint } from '../../utils/hash.js';
 import { logAudit } from '../../utils/audit.js';
 import { ClassificationService } from '../classification/classification.service.js';
+import { GenericCsvParser } from '../investments/imports/parsers/GenericCsvParser.js';
+import { CREDIT_TRANSACTION_TYPES, DEBIT_TRANSACTION_TYPES } from '../accounts/ledgerTypes.js';
+import { assertAccountInHousehold, assertCategoryUsable } from '../../middleware/rbac.js';
+
+/**
+ * The bank's debit/credit columns decide direction. A classifier/user suggestion is only honoured when it
+ * points the same way (e.g. FEE for a debit, REFUND for a credit). TRANSFER is never booked from an import:
+ * without a transfers record the ledger ignores it, so it falls back to the bank direction and is flagged.
+ */
+function reconcileImportType(bankType: 'INCOME' | 'EXPENSE', suggested?: string | null): { type: string; possibleTransfer: boolean } {
+  if (suggested === 'TRANSFER') return { type: bankType, possibleTransfer: true };
+  const sameDirection =
+    (bankType === 'INCOME' && (CREDIT_TRANSACTION_TYPES as readonly string[]).includes(suggested || '')) ||
+    (bankType === 'EXPENSE' && (DEBIT_TRANSACTION_TYPES as readonly string[]).includes(suggested || ''));
+  return { type: sameDirection ? (suggested as string) : bankType, possibleTransfer: false };
+}
 
 export interface ColumnMapping {
   dateCol: string;
@@ -56,44 +72,25 @@ export class ImportsService {
    * Parse date formats into YYYY-MM-DD
    */
   static parseDate(dateStr: string): string | null {
-    if (!dateStr) return null;
-    const clean = dateStr.trim();
-
-    // Match DD/MM/YYYY or DD-MM-YYYY
-    const dmyMatch = clean.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
-    if (dmyMatch) {
-      const day = dmyMatch[1].padStart(2, '0');
-      const month = dmyMatch[2].padStart(2, '0');
-      const year = dmyMatch[3];
-      return `${year}-${month}-${day}`;
-    }
-
-    // Match YYYY-MM-DD
-    const ymdMatch = clean.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
-    if (ymdMatch) {
-      const year = ymdMatch[1];
-      const month = ymdMatch[2].padStart(2, '0');
-      const day = ymdMatch[3].padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    }
-
-    const parsed = new Date(clean);
-    if (!isNaN(parsed.getTime())) {
-      return parsed.toISOString().split('T')[0];
-    }
-
-    return null;
+    // Day-first aware, timezone-safe parser (DD-MM-YYYY, DD/MM/YY, DD-Mon-YYYY, YYYY-MM-DD).
+    return GenericCsvParser.parseDate(dateStr);
   }
 
   /**
    * Parse numeric monetary value
    */
   static parseMoney(valStr: any): number {
-    if (typeof valStr === 'number') return valStr;
+    if (typeof valStr === 'number') return Number.isFinite(valStr) ? valStr : 0;
     if (!valStr) return 0;
-    const cleaned = String(valStr).replace(/,/g, '').trim();
-    const val = parseFloat(cleaned);
-    return isNaN(val) ? 0 : val;
+    let str = String(valStr).trim();
+    // Accounting negatives "(1,234.00)" and Dr/Cr suffixes used by Indian bank exports.
+    let negative = /^\(.*\)$/.test(str) || /dr\.?$/i.test(str);
+    str = str.replace(/(dr|cr)\.?$/i, '');
+    const cleaned = str.replace(/[^0-9.\-]/g, '');
+    if (cleaned.startsWith('-')) negative = true;
+    const val = parseFloat(cleaned.replace(/-/g, ''));
+    if (!Number.isFinite(val)) return 0;
+    return negative ? -val : val;
   }
 
   static async uploadAndPreview(
@@ -104,6 +101,8 @@ export class ImportsService {
     csvContent: string,
     customMapping?: Partial<ColumnMapping>
   ) {
+    await assertAccountInHousehold(accountId, householdId);
+
     const rawRows = parse(csvContent, {
       columns: true,
       skip_empty_lines: true,
@@ -154,8 +153,8 @@ export class ImportsService {
       let transactionType: 'INCOME' | 'EXPENSE' = 'EXPENSE';
 
       if (mapping.debitCol && mapping.creditCol) {
-        const debit = this.parseMoney(raw[mapping.debitCol]);
-        const credit = this.parseMoney(raw[mapping.creditCol]);
+        const debit = Math.abs(this.parseMoney(raw[mapping.debitCol]));
+        const credit = Math.abs(this.parseMoney(raw[mapping.creditCol]));
         if (credit > 0) {
           amount = credit;
           transactionType = 'INCOME';
@@ -205,15 +204,18 @@ export class ImportsService {
         // Automated Category Classification
         const classification = await ClassificationService.classify(householdId, rawDesc, amount, parsedDate);
 
+        const reconciled = reconcileImportType(transactionType, classification.transactionType);
         const parsedData = {
           date: parsedDate,
           description: rawDesc,
           amount,
-          transaction_type: classification.transactionType || transactionType,
+          bank_direction: transactionType,
+          transaction_type: reconciled.type,
+          possible_transfer: reconciled.possibleTransfer,
           category_id: classification.categoryId,
           category_name: classification.categoryName,
           confidence: classification.confidence,
-          is_transfer: classification.isTransfer || false,
+          is_transfer: classification.isTransfer || reconciled.possibleTransfer,
           reference: rawRef,
           fingerprint,
         };
@@ -264,9 +266,12 @@ export class ImportsService {
   ) {
     const { includeDuplicates = false, rowOverrides = {} } = options;
 
+    return QueryHelper.transaction(async (client) => {
+    // Lock the batch so two concurrent commits cannot both import it.
     const batch = await QueryHelper.queryOne(
-      `SELECT * FROM import_batches WHERE id = $1 AND household_id = $2`,
-      [batchId, householdId]
+      `SELECT * FROM import_batches WHERE id = $1 AND household_id = $2 FOR UPDATE`,
+      [batchId, householdId],
+      client
     );
 
     if (!batch) {
@@ -285,10 +290,10 @@ export class ImportsService {
 
     const rows = await QueryHelper.query(
       `SELECT * FROM import_rows WHERE batch_id = $1 ${includeDuplicates ? `AND status IN ('VALID', 'DUPLICATE')` : `AND status = 'VALID'`}`,
-      [batchId]
+      [batchId],
+      client
     );
 
-    return QueryHelper.transaction(async (client) => {
       let importedCount = 0;
 
       for (const r of rows) {
@@ -297,8 +302,13 @@ export class ImportsService {
 
         const override = rowOverrides[r.id] || {};
         const finalCategoryId = override.category_id !== undefined ? override.category_id : p.category_id;
-        const finalType = override.transaction_type || p.transaction_type || 'EXPENSE';
+        const bankDirection: 'INCOME' | 'EXPENSE' =
+          p.bank_direction || (p.transaction_type === 'INCOME' || p.transaction_type === 'REFUND' ? 'INCOME' : 'EXPENSE');
+        const reconciled = reconcileImportType(bankDirection, override.transaction_type || p.transaction_type);
+        const finalType = reconciled.type;
+        const possibleTransfer = reconciled.possibleTransfer || !!p.possible_transfer;
         const finalDesc = override.description || p.description;
+        if (finalCategoryId) await assertCategoryUsable(finalCategoryId, householdId, client);
 
         // If user requested to save rule from review
         if (override.save_rule && finalCategoryId && finalDesc) {
@@ -307,7 +317,7 @@ export class ImportsService {
             await ClassificationService.saveRule(householdId, userId, {
               pattern,
               category_id: finalCategoryId,
-              transaction_type: finalType,
+              transaction_type: (['INCOME', 'EXPENSE', 'OTHER'].includes(finalType) ? finalType : bankDirection) as any,
             });
           }
         }
@@ -327,6 +337,12 @@ export class ImportsService {
           source_reference: batch.filename,
           external_reference: p.reference || null,
           import_hash: p.fingerprint,
+          needs_review: possibleTransfer || (!finalCategoryId && p.confidence === 'NEEDS_REVIEW'),
+          review_note: possibleTransfer
+            ? 'Looks like a transfer – record it on the Transfers page (and void this) if it moved money between your accounts'
+            : !finalCategoryId && p.confidence === 'NEEDS_REVIEW'
+              ? 'No category matched during import'
+              : null,
         }, client);
 
         await QueryHelper.update('import_rows', r.id, { matched_transaction_id: tx.id }, '', [], client);

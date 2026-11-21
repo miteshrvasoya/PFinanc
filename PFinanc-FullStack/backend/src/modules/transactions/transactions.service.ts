@@ -1,5 +1,7 @@
 import { QueryHelper } from '../../database/queryHelper.js';
+import { toLocalDateString } from '../../utils/date.js';
 import { logAudit } from '../../utils/audit.js';
+import { accessibleAccountSql, assertAccountInHousehold, assertCategoryUsable } from '../../middleware/rbac.js';
 
 export interface TransactionFilter {
   householdId: string;
@@ -12,6 +14,9 @@ export interface TransactionFilter {
   startDate?: string;
   endDate?: string;
   search?: string;
+  needsReview?: boolean;
+  /** Set for MEMBER/VIEWER callers: only transactions on accounts this user can access are returned. */
+  restrictToUserId?: string;
   limit?: number;
   offset?: number;
 }
@@ -59,6 +64,16 @@ export class TransactionsService {
     if (filter.endDate) {
       params.push(filter.endDate);
       conditions.push(`t.transaction_date <= $${params.length}`);
+    }
+
+    if (filter.restrictToUserId) {
+      params.push(filter.restrictToUserId);
+      conditions.push(`t.account_id IN (SELECT acc.id FROM accounts acc WHERE acc.household_id = t.household_id AND ${accessibleAccountSql('acc', `$${params.length}`)})`);
+    }
+
+    if (filter.needsReview !== undefined) {
+      params.push(filter.needsReview);
+      conditions.push(`t.needs_review = $${params.length}`);
     }
 
     if (filter.search) {
@@ -113,6 +128,8 @@ export class TransactionsService {
         t.notes,
         t.linked_entity_type,
         t.linked_entity_id,
+        t.needs_review,
+        t.review_note,
         t.created_at,
         t.updated_at
       FROM transactions t
@@ -164,6 +181,8 @@ export class TransactionsService {
         t.notes,
         t.linked_entity_type,
         t.linked_entity_id,
+        t.needs_review,
+        t.review_note,
         t.created_at,
         t.updated_at
       FROM transactions t
@@ -181,6 +200,15 @@ export class TransactionsService {
   }
 
   static async createTransaction(householdId: string, currentUserId: string, data: any) {
+    if (data.transaction_type === 'TRANSFER') {
+      // A TRANSFER row without a transfers record is ignored by the balance ledger (money would vanish).
+      const error: any = new Error('Transfers must be created via /api/transfers so both legs are recorded');
+      error.status = 400;
+      error.code = 'USE_TRANSFER_SERVICE';
+      throw error;
+    }
+    await assertAccountInHousehold(data.account_id, householdId);
+    await assertCategoryUsable(data.category_id, householdId);
     const transaction = await QueryHelper.insert('transactions', {
       household_id: householdId,
       account_id: data.account_id,
@@ -190,7 +218,7 @@ export class TransactionsService {
       transaction_type: data.transaction_type,
       amount: data.amount,
       currency: data.currency || 'INR',
-      transaction_date: data.transaction_date || new Date().toISOString().split('T')[0],
+      transaction_date: data.transaction_date || toLocalDateString(),
       description: data.description,
       merchant_name: data.merchant_name || null,
       status: data.status || 'CONFIRMED',
@@ -200,6 +228,7 @@ export class TransactionsService {
       notes: data.notes || null,
       linked_entity_type: data.linked_entity_type || null,
       linked_entity_id: data.linked_entity_id || null,
+      source_candidate_id: data.source_candidate_id || null,
     });
 
     await logAudit(householdId, currentUserId, 'TRANSACTION', transaction.id, 'CREATE', null, transaction);
@@ -222,7 +251,36 @@ export class TransactionsService {
       throw error;
     }
 
-    const updated = await QueryHelper.update('transactions', id, data, 'household_id = $1', [householdId]);
+    if ('category_id' in data) {
+      await assertCategoryUsable(data.category_id, householdId);
+    }
+
+    if (data.linked_entity_id) {
+      const table = data.linked_entity_type === 'RENT' ? 'rent_agreements' : data.linked_entity_type === 'LOAN' ? 'loans' : null;
+      const linked = table
+        ? await QueryHelper.queryOne(`SELECT 1 FROM ${table} WHERE id = $1 AND household_id = $2`, [data.linked_entity_id, householdId])
+        : null;
+      if (!linked) {
+        const error: any = new Error('Linked loan / rent agreement not found in this household');
+        error.status = 400;
+        error.code = 'INVALID_LINKED_ENTITY';
+        throw error;
+      }
+    } else if (data.linked_entity_type === null || data.linked_entity_id === null) {
+      data = { ...data, linked_entity_type: null, linked_entity_id: null };
+    }
+
+    // Re-categorizing a flagged transaction counts as reviewing it, unless the caller says otherwise.
+    const updateData = { ...data };
+    if (old.needs_review && 'category_id' in data && data.needs_review === undefined) {
+      updateData.needs_review = false;
+    }
+
+    const updated = await QueryHelper.update('transactions', id, updateData, 'household_id = $1', [householdId]);
+    if (data.transaction_type && data.transaction_type !== old.transaction_type) {
+      // Split lines share their parent's direction.
+      await QueryHelper.query(`UPDATE transaction_splits SET transaction_type = $1 WHERE parent_transaction_id = $2`, [data.transaction_type, id]);
+    }
     await logAudit(householdId, currentUserId, 'TRANSACTION', id, 'UPDATE', old, updated);
     return this.getTransactionById(id, householdId);
   }
@@ -236,15 +294,40 @@ export class TransactionsService {
       throw error;
     }
 
-    // If part of transfer, update transfer and both legs atomically
-    if (old.transfer_id) {
-      await QueryHelper.transaction(async (client) => {
-        await QueryHelper.update('transfers', old.transfer_id, { status }, '', [], client);
-        await QueryHelper.query(`UPDATE transactions SET status = $1 WHERE transfer_id = $2`, [status, old.transfer_id], client);
-      });
-    } else {
-      await QueryHelper.update('transactions', id, { status }, 'household_id = $1', [householdId]);
+    if (old.status === status) {
+      return this.getTransactionById(id, householdId);
     }
+    // Void is terminal (docs/accounting-rules.md: "Void Immutability"); rejected drafts may only be voided.
+    if (old.status === 'VOID' || (old.status === 'REJECTED' && status !== 'VOID')) {
+      const error: any = new Error(`A ${old.status.toLowerCase()} transaction cannot be changed to ${status.toLowerCase()}`);
+      error.status = 400;
+      error.code = 'INVALID_STATUS_TRANSITION';
+      throw error;
+    }
+
+    await QueryHelper.transaction(async (client) => {
+      if (old.transfer_id) {
+        // Part of a transfer: update the transfer and both legs atomically
+        await QueryHelper.update('transfers', old.transfer_id, { status }, 'household_id = $1', [householdId], client);
+        await QueryHelper.query(
+          `UPDATE transactions SET status = $1, updated_at = NOW() WHERE transfer_id = $2 AND household_id = $3`,
+          [status, old.transfer_id, householdId],
+          client
+        );
+      } else {
+        await QueryHelper.update('transactions', id, { status }, 'household_id = $1', [householdId], client);
+      }
+
+      // Keep investment trades consistent with their funding / payout cash leg.
+      const investmentStatus = status === 'CONFIRMED' ? 'CONFIRMED' : 'VOID';
+      await QueryHelper.query(
+        `UPDATE investment_transactions SET status = $1, updated_at = NOW()
+         WHERE linked_cash_transaction_id = $2 AND household_id = $3
+           AND status <> 'VOID' AND ($1 = 'VOID' OR status = 'DRAFT')`,
+        [investmentStatus, id, householdId],
+        client
+      );
+    });
 
     await logAudit(householdId, currentUserId, 'TRANSACTION', id, status as any, old, { ...old, status });
     return this.getTransactionById(id, householdId);

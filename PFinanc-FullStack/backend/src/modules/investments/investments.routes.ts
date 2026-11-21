@@ -33,7 +33,8 @@ investmentsRouter.post('/transactions/:id/void', InvestmentTransactionsControlle
 
 // 4. Market Prices
 investmentsRouter.post('/prices/refresh', PricesController.refreshPrices);
-investmentsRouter.post('/prices/set', PricesController.setPrice);
+// Prices are shared by every household, so manual overrides are limited to owners/admins.
+investmentsRouter.post('/prices/set', requireHouseholdAccess(['OWNER', 'ADMIN']), PricesController.setPrice);
 
 // 5. Fixed Deposits
 investmentsRouter.get('/fixed-deposits', FixedDepositsController.list);

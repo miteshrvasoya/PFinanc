@@ -1,8 +1,16 @@
 import { Request } from 'express';
 
+/**
+ * Household the request is authorized for. Only trust this after requireHouseholdAccess() has run;
+ * the raw fallbacks below exist for unauthenticated/public routes.
+ */
 export function getHouseholdId(req: Request): string {
   if (req.householdMembership?.household_id) {
     return req.householdMembership.household_id;
+  }
+  const paramHousehold = req.params?.householdId;
+  if (paramHousehold) {
+    return Array.isArray(paramHousehold) ? String(paramHousehold[0]) : String(paramHousehold);
   }
   const headerVal = req.headers['x-household-id'];
   if (headerVal) {

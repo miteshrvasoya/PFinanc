@@ -1,4 +1,6 @@
 import { QueryHelper } from '../../../database/queryHelper.js';
+import { toLocalDateString } from '../../../utils/date.js';
+import { assertAccountInHousehold, assertHouseholdMember } from '../../../middleware/rbac.js';
 import { logAudit } from '../../../utils/audit.js';
 
 export class RetirementService {
@@ -46,6 +48,8 @@ export class RetirementService {
   }
 
   static async createAccount(userId: string, data: any) {
+    await assertHouseholdMember(data.user_id, data.household_id);
+    if (data.account_id) await assertAccountInHousehold(data.account_id, data.household_id);
     const openingBal = parseFloat(data.opening_balance || '0');
     const currentBal = parseFloat(data.current_balance || String(openingBal));
 
@@ -90,31 +94,34 @@ export class RetirementService {
   }
 
   static async addContribution(userId: string, householdId: string, data: any) {
-    const account = await QueryHelper.queryOne<{ current_balance: string }>(
-      `SELECT current_balance FROM retirement_accounts WHERE id = $1 AND household_id = $2`,
-      [data.retirement_account_id, householdId]
-    );
-
-    if (!account) {
-      const error: any = new Error('Retirement account not found');
-      error.status = 404;
-      error.code = 'RETIREMENT_ACCOUNT_NOT_FOUND';
-      throw error;
-    }
-
-    const prevBal = parseFloat(account.current_balance);
     const emp = parseFloat(data.employee_contribution || '0');
     const empyr = parseFloat(data.employer_contribution || '0');
     const intAmt = parseFloat(data.interest_amount || '0');
     const withdr = parseFloat(data.withdrawal_amount || '0');
 
-    let closing = data.total_closing_balance ? parseFloat(data.total_closing_balance) : (prevBal + emp + empyr + intAmt - withdr);
-
     return QueryHelper.transaction(async (client) => {
+      // Lock the account row so concurrent contributions cannot overwrite each other's balance.
+      const account = await QueryHelper.queryOne<{ current_balance: string }>(
+        `SELECT current_balance FROM retirement_accounts WHERE id = $1 AND household_id = $2 FOR UPDATE`,
+        [data.retirement_account_id, householdId],
+        client
+      );
+      if (!account) {
+        const error: any = new Error('Retirement account not found');
+        error.status = 404;
+        error.code = 'RETIREMENT_ACCOUNT_NOT_FOUND';
+        throw error;
+      }
+      const prevBal = parseFloat(account.current_balance);
+      const explicitClosing = data.total_closing_balance !== undefined && data.total_closing_balance !== null && data.total_closing_balance !== ''
+        ? parseFloat(data.total_closing_balance)
+        : NaN;
+      const closing = Number.isFinite(explicitClosing) ? explicitClosing : prevBal + emp + empyr + intAmt - withdr;
+
       const contrib = await QueryHelper.insert('retirement_contributions', {
         retirement_account_id: data.retirement_account_id,
         household_id: householdId,
-        contribution_date: data.contribution_date || new Date().toISOString().split('T')[0],
+        contribution_date: data.contribution_date || toLocalDateString(),
         employee_contribution: emp,
         employer_contribution: empyr,
         interest_amount: intAmt,
@@ -125,7 +132,7 @@ export class RetirementService {
 
       await QueryHelper.update('retirement_accounts', data.retirement_account_id, {
         current_balance: closing,
-      }, '', [], client);
+      }, 'household_id = $1', [householdId], client);
 
       await logAudit(householdId, userId, 'RETIREMENT_CONTRIBUTION', contrib.id, 'CREATE', null, contrib, client);
       return contrib;

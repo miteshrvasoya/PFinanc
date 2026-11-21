@@ -5,9 +5,15 @@
 ALTER TABLE securities ADD COLUMN IF NOT EXISTS scheme_code VARCHAR(100);
 ALTER TABLE securities ADD COLUMN IF NOT EXISTS amfi_code VARCHAR(100);
 
--- 2. Drop existing stub import tables if they exist to replace with robust schema
-DROP TABLE IF EXISTS investment_imports CASCADE;
-DROP TABLE IF EXISTS investment_import_rows CASCADE;
+-- 2. Drop the legacy stub import tables from migration 003 (only when they still have the old shape).
+--    Previously these DROPs were unconditional and wiped all investment imports on every startup.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = current_schema() AND table_name = 'investment_import_rows' AND column_name = 'batch_id') THEN
+        DROP TABLE investment_import_rows CASCADE;
+    END IF;
+END $$;
 DROP TABLE IF EXISTS investment_import_batches CASCADE;
 
 -- 3. Create rigorous investment_imports table
@@ -63,7 +69,6 @@ CREATE TABLE IF NOT EXISTS investment_import_rows (
 );
 
 -- 5. Create investment_holdings to store current portfolio snapshots
-DROP TABLE IF EXISTS investment_holdings CASCADE;
 CREATE TABLE IF NOT EXISTS investment_holdings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     family_id UUID NOT NULL REFERENCES households(id) ON DELETE CASCADE,

@@ -1,4 +1,5 @@
 import { QueryHelper } from '../../database/queryHelper.js';
+import { assertCategoryUsable } from '../../middleware/rbac.js';
 import { logAudit } from '../../utils/audit.js';
 import { StatementCsvParser, ColumnMapping } from './parser/csvParser.js';
 import { StatementPostProcessor } from './ai/postProcessor.service.js';
@@ -246,7 +247,12 @@ export class StatementImportsService {
       `SELECT id FROM statement_imports WHERE id = $1 AND household_id = $2`,
       [importId, householdId]
     );
-    if (!imp) throw new Error('Statement import not found');
+    if (!imp) {
+      const error: any = new Error('Statement import not found');
+      error.status = 404;
+      error.code = 'IMPORT_NOT_FOUND';
+      throw error;
+    }
 
     const offset = (page - 1) * limit;
     const typeFilter = rowType ? `AND row_type = $2` : '';
@@ -344,17 +350,41 @@ export class StatementImportsService {
     const { includeDuplicates = false, rowOverrides = {} } = options;
 
     return QueryHelper.transaction(async (client) => {
+      // Lock the import so concurrent confirms cannot both write to the ledger.
+      const locked = await QueryHelper.queryOne(
+        `SELECT status FROM statement_imports WHERE id = $1 AND household_id = $2 FOR UPDATE`,
+        [importId, householdId],
+        client
+      );
+      if (!locked || locked.status === 'COMPLETED') {
+        const error: any = new Error('This statement import has already been committed to the financial ledger.');
+        error.status = 400;
+        error.code = 'ALREADY_COMMITTED';
+        throw error;
+      }
+
       let committedCount = 0;
 
       for (const item of enrichedResults) {
+        if (!item.amount || item.amount <= 0) continue;
         if (item.isDuplicate && !includeDuplicates) {
           continue;
         }
 
         const override = rowOverrides[item.parsedRowId] || {};
         const finalCategoryId = override.category_id !== undefined ? override.category_id : item.suggestedCategoryId;
-        const finalType = override.transaction_type || item.transactionType || 'EXPENSE';
+        const requestedType = override.transaction_type || item.transactionType || null;
+        const isCredit = item.direction === 'CREDIT';
+        const isInvestment = requestedType === 'INVESTMENT';
+        // Bank direction is authoritative. 'INVESTMENT' is not a ledger type (it violated the
+        // transactions CHECK and aborted the whole commit); TRANSFER needs a transfers record.
+        let finalType: string;
+        if (isInvestment) finalType = isCredit ? 'INVESTMENT_REDEMPTION' : 'INVESTMENT_PURCHASE';
+        else if (isCredit) finalType = requestedType === 'REFUND' ? 'REFUND' : 'INCOME';
+        else finalType = requestedType === 'FEE' || requestedType === 'OTHER' ? requestedType : 'EXPENSE';
+        const possibleTransfer = requestedType === 'TRANSFER' || item.transferCandidate;
         const finalDesc = override.description || item.description;
+        if (finalCategoryId) await assertCategoryUsable(finalCategoryId, householdId, client);
 
         // Use the date exactly as parsed from the statement to avoid UTC timezone shifts
         // (postProcessor guarantees this is in YYYY-MM-DD format locally)
@@ -383,11 +413,19 @@ export class StatementImportsService {
             source_type: 'CSV_IMPORT',
             source_reference: imp.filename,
             external_reference: null,
+            merchant_name: override.merchant || item.merchant || null,
+            import_hash: item.fingerprint,
+            needs_review: possibleTransfer || isInvestment,
+            review_note: possibleTransfer
+              ? 'Looks like a transfer – record it on the Transfers page (and void this) if it moved money between your accounts'
+              : isInvestment
+                ? 'Investment detected – complete security, units and investment account on the Investments page'
+                : null,
           },
           client
         );
 
-        if (finalType === 'INVESTMENT') {
+        if (isInvestment && !isCredit) {
           const invType = override.investment_type || 'MUTUAL_FUND';
           if (invType === 'FD') {
             await QueryHelper.insert('fixed_deposits', {
@@ -404,6 +442,8 @@ export class StatementImportsService {
               status: 'ACTIVE'
             }, client);
           } else if (invType === 'MUTUAL_FUND' || invType === 'STOCK') {
+            // No security/units/investment account are known from a bank statement, so record a DRAFT
+            // linked to the cash leg instead of a confirmed trade on the *bank* account.
             await QueryHelper.insert('investment_transactions', {
               household_id: householdId,
               investment_account_id: imp.account_id,
@@ -414,7 +454,9 @@ export class StatementImportsService {
               currency: 'INR',
               linked_cash_transaction_id: tx.id,
               source: 'CSV_IMPORT',
-              status: 'CONFIRMED'
+              status: 'DRAFT',
+              notes: `${invType} purchase detected in bank statement ${imp.filename}. Set the security, units and investment account, then confirm.`,
+              created_by: userId,
             }, client);
           }
         }

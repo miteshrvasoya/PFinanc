@@ -3,6 +3,21 @@ import { generateHash } from '../../../utils/hash.js';
 import { SecuritiesService } from '../securities/securities.service.js';
 import { logAudit } from '../../../utils/audit.js';
 import { GenericCsvParser, ColumnMapping } from './parsers/GenericCsvParser.js';
+import { assertAccountInHousehold } from '../../../middleware/rbac.js';
+
+function importNotFound(): never {
+  const error: any = new Error('Import not found');
+  error.status = 404;
+  error.code = 'IMPORT_NOT_FOUND';
+  throw error;
+}
+
+function invalidState(message: string): never {
+  const error: any = new Error(message);
+  error.status = 409;
+  error.code = 'INVALID_IMPORT_STATE';
+  throw error;
+}
 
 export class InvestmentImportsService {
   /**
@@ -17,6 +32,13 @@ export class InvestmentImportsService {
     filename: string,
     csvContent: string
   ) {
+    await assertAccountInHousehold(investmentAccountId, householdId);
+    if (!['STOCK', 'MUTUAL_FUND'].includes(investmentType) || !['TRANSACTIONS', 'HOLDINGS'].includes(importMode)) {
+      const error: any = new Error('investment_type must be STOCK or MUTUAL_FUND and import_mode TRANSACTIONS or HOLDINGS');
+      error.status = 400;
+      error.code = 'INVALID_INPUT';
+      throw error;
+    }
     const fileHash = generateHash(csvContent);
 
     // Check for duplicate file
@@ -89,7 +111,10 @@ export class InvestmentImportsService {
       [importId, householdId]
     );
 
-    if (!importRec) throw new Error('Import not found');
+    if (!importRec) importNotFound();
+    if (['IMPORTING', 'COMPLETED', 'COMPLETED_WITH_WARNINGS', 'CANCELLED'].includes(importRec.status)) {
+      invalidState(`Import is ${importRec.status.toLowerCase()} and can no longer be re-parsed`);
+    }
 
     const rows = await QueryHelper.query<any>(
       `SELECT * FROM investment_import_rows WHERE import_id = $1 ORDER BY source_row_number ASC`,
@@ -140,12 +165,13 @@ export class InvestmentImportsService {
         }
 
         // Validate basic constraints
-        if (!normData.symbol || (!normData.quantity && !normData.amount && !normData.investedAmount)) {
+        const missingDate = importRec.import_mode === 'TRANSACTIONS' && !normData.date;
+        if (missingDate || !normData.symbol || (!normData.quantity && !normData.amount && !normData.investedAmount)) {
           await QueryHelper.update('investment_import_rows', row.id, {
             parse_status: 'SUCCESS',
             normalized_data: normData,
             validation_status: 'INVALID',
-            error_message: 'Missing symbol or positive quantity/amount',
+            error_message: missingDate ? 'Missing or unrecognised transaction date' : 'Missing symbol or positive quantity/amount',
             matched_security_id: matchedSecurityId
           }, '', [], client);
           invalidRows++;
@@ -250,7 +276,7 @@ export class InvestmentImportsService {
       [importId, householdId]
     );
 
-    if (!importRec) throw new Error('Import not found');
+    if (!importRec) importNotFound();
 
     const rows = await QueryHelper.query<any>(
       `SELECT * FROM investment_import_rows WHERE import_id = $1 ORDER BY source_row_number ASC`,
@@ -272,8 +298,12 @@ export class InvestmentImportsService {
       [importId, householdId]
     );
 
-    if (!importRec) throw new Error('Import not found');
-    if (importRec.status === 'COMPLETED') throw new Error('Import already completed');
+    if (!importRec) importNotFound();
+    if (importRec.status !== 'READY_FOR_REVIEW') {
+      invalidState(
+        importRec.status === 'COMPLETED' ? 'Import already completed' : 'Parse and review the import before committing it'
+      );
+    }
 
     const rows = await QueryHelper.query<any>(
       `SELECT * FROM investment_import_rows WHERE import_id = $1 ORDER BY source_row_number ASC`,
@@ -287,7 +317,8 @@ export class InvestmentImportsService {
 
       for (const row of rows) {
         if (row.validation_status === 'INVALID' || row.parse_status !== 'SUCCESS') continue;
-        if (row.validation_status === 'DUPLICATE' && !includeDuplicates) continue;
+        // Holding snapshots are unique per account/security/date, so duplicates can never be forced in.
+        if (row.validation_status === 'DUPLICATE' && (!includeDuplicates || importRec.import_mode === 'HOLDINGS')) continue;
 
         const p = row.normalized_data;
         let securityId = row.matched_security_id;
@@ -308,18 +339,30 @@ export class InvestmentImportsService {
         }
 
         if (importRec.import_mode === 'TRANSACTIONS') {
+          const qty = Number(p.quantity) || 0;
+          const price = Number(p.price) || 0;
+          const fees = Number(p.fees) || 0;
+          const taxes = Number(p.taxes) || 0;
+          const amount = Number(p.amount) || 0;
+          const gross = qty > 0 && price > 0 ? qty * price : amount;
+          let net: number;
+          if (p.type === 'SELL' || p.type === 'REDEMPTION') net = Math.max(0, gross - fees - taxes);
+          else if (p.type === 'DIVIDEND' || p.type === 'INTEREST') net = Math.max(0, (amount || gross) - taxes);
+          else if (p.type === 'BUY' || p.type === 'SIP') net = gross + fees + taxes;
+          else net = amount || gross;
+
           await QueryHelper.insert('investment_transactions', {
             household_id: householdId,
             investment_account_id: importRec.investment_account_id,
             security_id: securityId,
             transaction_type: p.type,
             transaction_date: p.date,
-            quantity: p.quantity,
-            price_per_unit: p.price,
-            gross_amount: p.quantity * p.price,
-            fees: p.fees || 0,
-            taxes: p.taxes || 0,
-            net_amount: p.amount || (p.quantity * p.price + (p.fees || 0) + (p.taxes || 0)),
+            quantity: qty || null,
+            price_per_unit: price || null,
+            gross_amount: gross,
+            fees,
+            taxes,
+            net_amount: net,
             currency: 'INR',
             source: 'CSV_IMPORT',
             status: 'CONFIRMED',

@@ -1,4 +1,5 @@
 import { QueryHelper } from '../../../database/queryHelper.js';
+import { toLocalDateString } from '../../../utils/date.js';
 
 export interface BuyLot {
   date: string;
@@ -59,7 +60,7 @@ export class HoldingsService {
       invested_amount,
       current_price,
       current_value,
-      as_of_date: as_of_date || new Date().toISOString().split('T')[0]
+      as_of_date: as_of_date || toLocalDateString()
     });
     return snapshot;
   }
@@ -252,6 +253,11 @@ export class HoldingsService {
 
     const snapshotConditions = ['ih.family_id = $1'];
     const snapshotParams: any[] = [filter.householdId];
+
+    if (filter.userId) {
+      snapshotParams.push(filter.userId);
+      snapshotConditions.push(`a.owner_user_id = $${snapshotParams.length}`);
+    }
 
     if (filter.accountId) {
       snapshotParams.push(filter.accountId);
