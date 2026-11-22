@@ -1,4 +1,6 @@
-import { Platform, PermissionsAndroid, Alert } from 'react-native';
+import { Platform, PermissionsAndroid } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { apiClient } from './client';
 
 // react-native-get-sms-android is Android-only
 let SmsAndroid: any = null;
@@ -35,12 +37,31 @@ export interface RawSMS {
   date_sent: number;
 }
 
+/** Shape the backend's POST /api/automation/candidates/sync expects. */
 export interface SMSCandidate {
-  sms_hash: string;
+  messageHash: string;
   sender: string;
   body: string;
-  received_at: string; // ISO string
-  raw_date: number;
+  receivedAt: string; // ISO string
+}
+
+export interface SyncSummary {
+  created: number;
+  duplicates: number;
+  ignored: number;
+  errors: number;
+  firstError?: string;
+}
+
+/** Stable per-install id; the backend requires it in the x-device-id header. */
+export async function getDeviceId(): Promise<string> {
+  try {
+    const existing = await AsyncStorage.getItem('device_id');
+    if (existing) return existing;
+  } catch {}
+  const id = 'dev-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  try { await AsyncStorage.setItem('device_id', id); } catch {}
+  return id;
 }
 
 /** Request READ_SMS permission on Android */
@@ -112,23 +133,49 @@ function isFinancialSMS(sms: RawSMS): boolean {
   return fromBank || hasFinancialWord;
 }
 
-/** Convert raw SMS list into backend-ready candidates payload */
+/** Convert raw SMS list into the backend-ready candidates payload */
 export function buildCandidatesPayload(smsList: RawSMS[]): SMSCandidate[] {
   return smsList.map((sms) => ({
-    sms_hash: simpleHash(`${sms._id}-${sms.date}`),
+    // Hash content (not the device-local _id) so the same message dedupes across reinstalls.
+    messageHash: hash53(`${sms.address}|${sms.date}|${sms.body}`),
     sender: sms.address,
     body: sms.body,
-    received_at: new Date(sms.date).toISOString(),
-    raw_date: sms.date,
+    receivedAt: new Date(sms.date).toISOString(),
   }));
 }
 
-function simpleHash(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash |= 0;
+/** Send candidates to the backend in batches and summarise what happened. */
+export async function syncSmsCandidates(candidates: SMSCandidate[]): Promise<SyncSummary> {
+  const summary: SyncSummary = { created: 0, duplicates: 0, ignored: 0, errors: 0 };
+  const deviceId = await getDeviceId();
+  const BATCH = 40;
+
+  for (let i = 0; i < candidates.length; i += BATCH) {
+    const res = await apiClient.post(
+      '/api/automation/candidates/sync',
+      { candidates: candidates.slice(i, i + BATCH) },
+      { 'x-device-id': deviceId }
+    );
+    const results: any[] = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+    for (const r of results) {
+      if (r.status === 'CANDIDATE_CREATED') summary.created++;
+      else if (r.status === 'IGNORED') summary.ignored++;
+      else if (r.status === 'ERROR') { summary.errors++; summary.firstError ||= r.error; }
+      else summary.duplicates++;
+    }
   }
-  return Math.abs(hash).toString(16);
+  return summary;
+}
+
+// cyrb53: fast 53-bit string hash (far fewer collisions than a 32-bit hash)
+function hash53(str: string): string {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
 }
