@@ -3,8 +3,10 @@ import { View, Text, StyleSheet, ScrollView, Image, Pressable, TextInput } from 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
+import { comingSoon } from '../utils/notify';
 
-export const AIAdvisorScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
+export const AIAdvisorScreen: React.FC<{ onBack?: () => void; onNavigate?: (screen: string, params?: { filter?: string }) => void }> = ({ onBack, onNavigate }) => {
+  const go = (screen: string, params?: { filter?: string }) => onNavigate && onNavigate(screen, params);
   const insets = useSafeAreaInsets();
 
   return (
@@ -22,7 +24,7 @@ export const AIAdvisorScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =
             <Text style={styles.appBarTitle}>PFinanc</Text>
           </View>
           <View style={styles.appBarRight}>
-            <Pressable style={styles.iconBtn}>
+            <Pressable style={styles.iconBtn} onPress={() => comingSoon('Visibility')}>
               <MaterialIcons name="visibility" size={20} color={colors.primary} />
             </Pressable>
           </View>
@@ -39,10 +41,10 @@ export const AIAdvisorScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =
             <Text style={styles.pageSubtitle}>Ask questions about your finances</Text>
           </View>
           <View style={styles.contextActions}>
-            <Pressable style={styles.contextActionBtn}>
+            <Pressable style={styles.contextActionBtn} onPress={() => comingSoon('Add comment')}>
               <MaterialIcons name="add-comment" size={19} color={colors.onSurfaceVariant} />
             </Pressable>
-            <Pressable style={styles.contextActionBtn}>
+            <Pressable style={styles.contextActionBtn} onPress={() => comingSoon('History')}>
               <MaterialIcons name="history" size={19} color={colors.onSurfaceVariant} />
             </Pressable>
           </View>
@@ -66,28 +68,28 @@ export const AIAdvisorScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =
             <Text style={styles.suggestionsSubtitle}>Tailored to October</Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContainer}>
-            <Pressable style={styles.suggestionCard}>
+            <Pressable style={styles.suggestionCard} onPress={() => go('budgets')}>
               <View style={styles.suggestionCardTitleRow}>
                 <MaterialIcons name="analytics" size={17} color={colors.surfaceTint} />
                 <Text style={[styles.suggestionCardTitle, { color: colors.primary }]}>Monthly Drift</Text>
               </View>
               <Text style={styles.suggestionCardDesc} numberOfLines={2}>“Where did I spend the most this month?”</Text>
             </Pressable>
-            <Pressable style={styles.suggestionCard}>
+            <Pressable style={styles.suggestionCard} onPress={() => go('history', { filter: 'Expenses' })}>
               <View style={styles.suggestionCardTitleRow}>
                 <MaterialIcons name="trending-up" size={17} color={colors.secondary} />
                 <Text style={[styles.suggestionCardTitle, { color: colors.secondary }]}>Expense Surge</Text>
               </View>
               <Text style={styles.suggestionCardDesc} numberOfLines={2}>“Why did my expenses increase?”</Text>
             </Pressable>
-            <Pressable style={styles.suggestionCard}>
+            <Pressable style={styles.suggestionCard} onPress={() => go('portfolio')}>
               <View style={styles.suggestionCardTitleRow}>
                 <MaterialIcons name="pie-chart" size={17} color={colors.tertiary} />
                 <Text style={[styles.suggestionCardTitle, { color: colors.tertiary }]}>Portfolio</Text>
               </View>
               <Text style={styles.suggestionCardDesc} numberOfLines={2}>“Explain my investment allocation”</Text>
             </Pressable>
-            <Pressable style={styles.suggestionCard}>
+            <Pressable style={styles.suggestionCard} onPress={() => go('vaultIntro')}>
               <View style={styles.suggestionCardTitleRow}>
                 <MaterialIcons name="family-restroom" size={17} color={colors.primary} />
                 <Text style={[styles.suggestionCardTitle, { color: colors.primary }]}>Family Vault</Text>
@@ -189,11 +191,11 @@ export const AIAdvisorScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =
               </View>
 
               <View style={styles.chatActionBtns}>
-                <Pressable style={styles.chatPrimaryBtn}>
+                <Pressable style={styles.chatPrimaryBtn} onPress={() => go('history', { filter: 'Expenses' })}>
                   <Text style={styles.chatPrimaryBtnText}>View Food Transactions (14)</Text>
                   <MaterialIcons name="arrow-forward" size={16} color={colors.onPrimary} />
                 </Pressable>
-                <Pressable style={styles.chatSecondaryBtn}>
+                <Pressable style={styles.chatSecondaryBtn} onPress={() => go('budgets')}>
                   <MaterialIcons name="alarm" size={16} color={colors.surfaceTint} />
                   <Text style={styles.chatSecondaryBtnText}>Set Dining Budget Alert</Text>
                 </Pressable>
@@ -252,7 +254,7 @@ export const AIAdvisorScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =
 
             <View style={styles.discoveryFooter}>
               <Text style={styles.discoveryFooterMeta}>Annual Outflow: ₹10,186</Text>
-              <Pressable style={styles.discoveryFooterBtn}>
+              <Pressable style={styles.discoveryFooterBtn} onPress={() => go('portfolio')}>
                 <Text style={styles.discoveryFooterBtnText}>Manage Mandates</Text>
                 <MaterialIcons name="chevron-right" size={15} color={colors.primaryContainer} />
               </Pressable>
@@ -270,7 +272,7 @@ export const AIAdvisorScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                 <Text style={styles.discoveryActionDesc}>3 transactions need family allocation</Text>
               </View>
             </View>
-            <Pressable style={styles.discoveryActionBtn}>
+            <Pressable style={styles.discoveryActionBtn} onPress={() => go('imports')}>
               <Text style={styles.discoveryActionBtnText}>Review</Text>
             </Pressable>
           </View>
@@ -283,7 +285,7 @@ export const AIAdvisorScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =
       {/* Sticky Bottom Chat Input Bar */}
       <View style={styles.inputContainer}>
         <View style={styles.inputBox}>
-          <Pressable style={styles.inputIconBtn}>
+          <Pressable style={styles.inputIconBtn} onPress={() => comingSoon('Attach file')}>
             <MaterialIcons name="attach-file" size={20} color={colors.onSurfaceVariant} />
           </Pressable>
           <TextInput 
@@ -291,10 +293,10 @@ export const AIAdvisorScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =
             placeholder="Ask anything about your money..."
             placeholderTextColor={colors.outline}
           />
-          <Pressable style={styles.inputIconBtn}>
+          <Pressable style={styles.inputIconBtn} onPress={() => comingSoon('Mic')}>
             <MaterialIcons name="mic" size={20} color={colors.onSurfaceVariant} />
           </Pressable>
-          <Pressable style={styles.sendBtn}>
+          <Pressable style={styles.sendBtn} onPress={() => comingSoon('Arrow upward')}>
             <MaterialIcons name="arrow-upward" size={18} color={colors.onPrimary} />
           </Pressable>
         </View>

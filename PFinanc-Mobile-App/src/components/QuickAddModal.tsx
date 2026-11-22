@@ -14,6 +14,7 @@ interface QuickAddModalProps {
   onClose: () => void;
   initialData?: any;      // for Edit mode: { raw: transaction object }
   initialTab?: string;    // 'Expense' | 'Income' | 'Transfer'
+  onSaved?: () => void;   // called after a successful save so screens can refresh
 }
 
 interface Account {
@@ -35,7 +36,7 @@ interface Category {
 }
 
 export const QuickAddModal: React.FC<QuickAddModalProps> = ({
-  visible, onClose, initialData, initialTab
+  visible, onClose, initialData, initialTab, onSaved
 }) => {
   const isEditMode = !!(initialData && initialData.raw);
   const tabs = isEditMode ? ['Expense', 'Income'] : ['Expense', 'Income', 'Transfer'];
@@ -57,10 +58,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Selector overlay state
-  const [selectorVisible, setSelectorVisible] = useState(false);
-  const [selectorTitle, setSelectorTitle] = useState('');
-  const [selectorType, setSelectorType] = useState<'account' | 'toAccount' | 'category'>('account');
+  const [showNote, setShowNote] = useState(false);
 
   // ─── Load accounts & categories from API ────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -129,6 +127,9 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
         setNote('');
         setMerchantName('');
         setSelectedDate(new Date());
+        setShowNote(false);
+      } else {
+        setShowNote(!!(initialData.raw.description || initialData.raw.notes));
       }
       loadData();
     }
@@ -145,30 +146,11 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
     }
   }, [activeTab]);
 
-  // ─── Open selector sheet ─────────────────────────────────────────────────────
-  const openSelector = (type: 'account' | 'toAccount' | 'category') => {
-    setSelectorType(type);
-    const titles: Record<string, string> = {
-      account: activeTab === 'Transfer' ? 'Select From Account' : 'Select Account',
-      toAccount: 'Select Destination Account',
-      category: 'Select Category',
-    };
-    setSelectorTitle(titles[type]);
-    setSelectorVisible(true);
-  };
-
-  const handleSelectorSelect = (item: Account | Category) => {
-    if (selectorType === 'account') setSelectedAccount(item as Account);
-    else if (selectorType === 'toAccount') setSelectedToAccount(item as Account);
-    else setSelectedCategory(item as Category);
-    setSelectorVisible(false);
-  };
-
   // ─── Validation helpers ───────────────────────────────────────────────────────
   const validateAndSave = async () => {
     const parsedAmount = parseFloat(amount);
     if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid amount greater than 0.');
+      Alert.alert('Enter an amount', 'Please type how much money it was.');
       return;
     }
     if (!selectedAccount) {
@@ -249,39 +231,13 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
 
         if (!res.success) throw new Error(res.message || 'Could not save transaction');
       }
+      onSaved?.();
       onClose();
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Could not save. Please try again.');
+      Alert.alert('Something went wrong', err.message || 'Could not save. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  // ─── Selector list data ───────────────────────────────────────────────────────
-  const selectorListData: (Account | Category)[] =
-    selectorType === 'category' ? categories : accounts;
-
-  const getItemIcon = (item: Account | Category): string => {
-    if ('account_type' in item) {
-      return item.account_type === 'BANK' ? 'account-balance'
-        : item.account_type === 'CREDIT_CARD' ? 'credit-card'
-        : item.account_type === 'INVESTMENT' ? 'trending-up'
-        : 'account-balance-wallet';
-    }
-    return getMaterialIcon((item as Category).icon) || 'category';
-  };
-
-  const getItemSubtitle = (item: Account | Category): string => {
-    if ('account_type' in item) {
-      const a = item as Account;
-      return `${a.account_type}${a.bank_name ? ` · ${a.bank_name}` : ''} · ₹${(a.current_balance || 0).toLocaleString('en-IN')}`;
-    }
-    return '';
-  };
-
-  const getItemColor = (item: Account | Category): string => {
-    if ('color' in item && (item as Category).color) return (item as Category).color!;
-    return colors.surfaceContainerHigh;
   };
 
   const activeAccounts = accounts.filter(a => a.is_active);
@@ -291,42 +247,61 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
     ? categories.filter(c => !c.category_type || c.category_type === 'INCOME' || c.category_type === 'BOTH')
     : categories;
 
-  const displayCategories = selectorType === 'category'
-    ? (activeTab === 'Transfer' ? categories : filteredCategories)
-    : [];
-
   // ─── Render ───────────────────────────────────────────────────────────────────
+  const TAB_META: Record<string, { label: string; icon: string; color: string; verb: string }> = {
+    Expense: { label: 'Money Out', icon: 'arrow-upward', color: colors.error, verb: 'Spent' },
+    Income: { label: 'Money In', icon: 'arrow-downward', color: colors.primaryContainer, verb: 'Received' },
+    Transfer: { label: 'Move Money', icon: 'swap-horiz', color: colors.secondary, verb: 'Moved' },
+  };
+  const meta = TAB_META[activeTab] || TAB_META.Expense;
+
+  const isToday = (d: Date) => d.toDateString() === new Date().toDateString();
+  const yesterday = new Date(Date.now() - 86400000);
+  const isYesterday = selectedDate.toDateString() === yesterday.toDateString();
+  const isCustomDate = !isToday(selectedDate) && !isYesterday;
+
+  const saveLabel = isEditMode && initialData?.raw?.id
+    ? 'Save changes'
+    : activeTab === 'Transfer' ? 'Move money' : activeTab === 'Income' ? 'Save money in' : 'Save money out';
+
+  const renderAccountChips = (selected: Account | null, onPick: (a: Account) => void, exclude?: string) => (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s2.chipRow}>
+      {activeAccounts.filter(a => a.id !== exclude).map(a => {
+        const on = selected?.id === a.id;
+        return (
+          <Pressable key={a.id} style={[s2.chip, on && s2.chipOn]} onPress={() => onPick(a)}>
+            <MaterialIcons name="account-balance-wallet" size={16} color={on ? colors.onPrimary : colors.onSurfaceVariant} />
+            <Text style={[s2.chipText, on && s2.chipTextOn]} numberOfLines={1}>{a.name}</Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+
   return (
     <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.overlay}>
         <Pressable style={styles.backdrop} onPress={onClose} />
 
-        <View style={styles.sheetContainer}>
+        <View style={[styles.sheetContainer, { maxHeight: '92%' }]}>
           <View style={styles.dragHandle} />
 
-          {/* Header */}
           <View style={styles.headerRow}>
-            <Text style={styles.headerTitle}>
-              {isEditMode ? 'Edit Transaction' : 'New Transaction'}
-            </Text>
-            <Pressable onPress={onClose} style={styles.closeButton}>
+            <Text style={styles.headerTitle}>{isEditMode && initialData?.raw?.id ? 'Edit entry' : 'Add an entry'}</Text>
+            <Pressable onPress={onClose} style={styles.closeButton} hitSlop={8}>
               <MaterialIcons name="close" size={22} color={colors.onSurfaceVariant} />
             </Pressable>
           </View>
 
-          {/* Tab Switcher */}
-          <View style={styles.segmentBg}>
+          {/* Step 1: what happened? */}
+          <View style={s2.tabs}>
             {tabs.map(tab => {
-              const isActive = activeTab === tab;
+              const m = TAB_META[tab];
+              const on = activeTab === tab;
               return (
-                <Pressable
-                  key={tab}
-                  style={[styles.segmentTab, isActive && styles.segmentTabActive]}
-                  onPress={() => setActiveTab(tab)}
-                >
-                  <Text style={[styles.segmentTabText, isActive && styles.segmentTabTextActive]}>
-                    {tab}
-                  </Text>
+                <Pressable key={tab} style={[s2.tab, on && { backgroundColor: m.color }]} onPress={() => setActiveTab(tab)}>
+                  <MaterialIcons name={m.icon as any} size={18} color={on ? colors.onPrimary : m.color} />
+                  <Text style={[s2.tabText, on && { color: colors.onPrimary }]}>{m.label}</Text>
                 </Pressable>
               );
             })}
@@ -335,146 +310,100 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
           {isLoading ? (
             <View style={{ height: 220, justifyContent: 'center', alignItems: 'center', gap: 12 }}>
               <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>Loading your accounts & categories...</Text>
+              <Text style={styles.loadingText}>Getting things ready...</Text>
             </View>
           ) : (
             <>
-              {/* No accounts warning */}
-              {activeAccounts.length === 0 && (
-                <View style={styles.warningBanner}>
-                  <MaterialIcons name="info" size={18} color="#b45309" />
-                  <Text style={styles.warningText}>
-                    No active accounts found. Go to <Text style={{ fontFamily: 'Inter_600SemiBold' }}>More → Accounts</Text> to add one.
-                  </Text>
-                </View>
-              )}
-
-              {/* No categories warning */}
-              {activeTab !== 'Transfer' && filteredCategories.length === 0 && (
-                <View style={styles.warningBanner}>
-                  <MaterialIcons name="info" size={18} color="#b45309" />
-                  <Text style={styles.warningText}>
-                    No categories found for {activeTab}. Add categories first.
-                  </Text>
-                </View>
-              )}
-
-              {/* Amount */}
-              <View style={styles.amountSection}>
-                <Text style={[styles.currencySymbol, !amount && { color: colors.outlineVariant }]}>₹</Text>
-                <TextInput
-                  style={styles.amountInput}
-                  value={amount}
-                  onChangeText={setAmount}
-                  keyboardType="decimal-pad"
-                  placeholder="0"
-                  placeholderTextColor={colors.outlineVariant}
-                  autoFocus
-                  selectionColor={colors.primary}
-                />
-              </View>
-
-              {/* Fields */}
-              <View style={styles.fieldsCard}>
-                {/* Account */}
-                <Pressable
-                  style={styles.fieldRow}
-                  onPress={() => openSelector('account')}
-                  disabled={activeAccounts.length === 0}
-                >
-                  <View style={styles.fieldLeft}>
-                    <View style={[styles.fieldIcon, { backgroundColor: 'rgba(192, 236, 214, 0.4)' }]}>
-                      <MaterialIcons name="account-balance" size={18} color={colors.primary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.fieldLabel}>
-                        {activeTab === 'Transfer' ? 'From Account' : 'Account'}
-                      </Text>
-                      <Text style={[styles.fieldValue, !selectedAccount && { color: colors.outline }]}>
-                        {selectedAccount
-                          ? `${selectedAccount.name}${selectedAccount.bank_name ? ` · ${selectedAccount.bank_name}` : ''}`
-                          : 'No accounts — add one first'}
-                      </Text>
-                      {selectedAccount && (
-                        <Text style={styles.fieldSubValue}>
-                          Balance: ₹{(selectedAccount.current_balance || 0).toLocaleString('en-IN')}
-                        </Text>
-                      )}
-                    </View>
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 8 }}>
+                {activeAccounts.length === 0 && (
+                  <View style={styles.warningBanner}>
+                    <MaterialIcons name="info" size={18} color="#b45309" />
+                    <Text style={styles.warningText}>
+                      You haven't added an account yet. Open <Text style={{ fontFamily: 'Inter_600SemiBold' }}>More → Accounts</Text> to add one.
+                    </Text>
                   </View>
-                  <MaterialIcons name="chevron-right" size={20} color={colors.outline} />
-                </Pressable>
-
-                {/* To Account (Transfer only) */}
-                {activeTab === 'Transfer' && (
-                  <Pressable
-                    style={styles.fieldRow}
-                    onPress={() => openSelector('toAccount')}
-                    disabled={activeAccounts.length < 2}
-                  >
-                    <View style={styles.fieldLeft}>
-                      <View style={[styles.fieldIcon, { backgroundColor: 'rgba(255, 222, 164, 0.4)' }]}>
-                        <MaterialIcons name="swap-horiz" size={18} color={colors.secondary} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.fieldLabel}>To Account</Text>
-                        <Text style={[styles.fieldValue, !selectedToAccount && { color: colors.outline }]}>
-                          {selectedToAccount
-                            ? `${selectedToAccount.name}${selectedToAccount.bank_name ? ` · ${selectedToAccount.bank_name}` : ''}`
-                            : activeAccounts.length < 2 ? 'Need at least 2 accounts' : 'Select Account'}
-                        </Text>
-                      </View>
-                    </View>
-                    <MaterialIcons name="chevron-right" size={20} color={colors.outline} />
-                  </Pressable>
                 )}
 
-                {/* Category */}
+                {/* Step 2: how much? */}
+                <Text style={s2.step}>How much?</Text>
+                <View style={[styles.amountSection, s2.amountBox]}>
+                  <Text style={[styles.currencySymbol, { color: amount ? meta.color : colors.outlineVariant }]}>₹</Text>
+                  <TextInput
+                    style={[styles.amountInput, amount ? { color: meta.color } : null]}
+                    value={amount}
+                    onChangeText={t => setAmount(t.replace(/[^0-9.]/g, ''))}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    placeholderTextColor={colors.outlineVariant}
+                    autoFocus={!isEditMode}
+                    selectionColor={colors.primary}
+                  />
+                </View>
+                {!isEditMode && (
+                  <View style={s2.quickAmounts}>
+                    {[100, 500, 1000, 5000].map(v => (
+                      <Pressable key={v} style={s2.quickAmt} onPress={() => setAmount(String((parseFloat(amount) || 0) + v))}>
+                        <Text style={s2.quickAmtText}>+{v.toLocaleString('en-IN')}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+
+                {/* Step 3: what for? */}
                 {activeTab !== 'Transfer' && (
-                  <Pressable
-                    style={styles.fieldRow}
-                    onPress={() => openSelector('category')}
-                    disabled={filteredCategories.length === 0}
-                  >
-                    <View style={styles.fieldLeft}>
-                      <View style={[styles.fieldIcon, { backgroundColor: selectedCategory?.color || colors.surfaceContainerHigh }]}>
-                        <MaterialIcons
-                          name={getMaterialIcon(selectedCategory?.icon) || 'category'}
-                          size={18}
-                          color={colors.onSurface}
-                        />
+                  <>
+                    <Text style={s2.step}>{activeTab === 'Income' ? 'What kind of income?' : 'What was it for?'}</Text>
+                    {filteredCategories.length === 0 ? (
+                      <Text style={s2.hint}>No categories found. Add categories from More → Insights.</Text>
+                    ) : (
+                      <View style={s2.catGrid}>
+                        {filteredCategories.map(c => {
+                          const on = selectedCategory?.id === c.id;
+                          return (
+                            <Pressable key={c.id} style={[s2.cat, on && s2.catOn]} onPress={() => setSelectedCategory(c)}>
+                              <View style={[s2.catIcon, { backgroundColor: c.color || colors.surfaceContainerHigh }]}>
+                                <MaterialIcons name={getMaterialIcon(c.icon) || 'category'} size={20} color={colors.primary} />
+                              </View>
+                              <Text style={[s2.catText, on && { color: colors.primary, fontFamily: 'Inter_700Bold' }]} numberOfLines={1}>{c.name}</Text>
+                            </Pressable>
+                          );
+                        })}
                       </View>
-                      <View>
-                        <Text style={styles.fieldLabel}>Category</Text>
-                        <Text style={[styles.fieldValue, !selectedCategory && { color: colors.outline }]}>
-                          {selectedCategory?.name || (filteredCategories.length === 0 ? 'No categories — add one first' : 'Select Category')}
-                        </Text>
-                      </View>
-                    </View>
-                    <MaterialIcons name="chevron-right" size={20} color={colors.outline} />
-                  </Pressable>
+                    )}
+                  </>
                 )}
 
-                {/* Date */}
-                <Pressable style={styles.fieldRow} onPress={() => setShowDatePicker(true)}>
-                  <View style={styles.fieldLeft}>
-                    <View style={[styles.fieldIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
-                      <MaterialIcons name="calendar-today" size={18} color={colors.onSurfaceVariant} />
-                    </View>
-                    <View>
-                      <Text style={styles.fieldLabel}>Date</Text>
-                      <Text style={styles.fieldValue}>
-                        {selectedDate.toDateString() === new Date().toDateString()
-                          ? 'Today'
-                          : selectedDate.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' })}
-                      </Text>
-                    </View>
-                  </View>
-                  <MaterialIcons name="chevron-right" size={20} color={colors.outline} />
-                </Pressable>
+                {/* Step 4: which account? */}
+                <Text style={s2.step}>{activeTab === 'Transfer' ? 'Take money from' : activeTab === 'Income' ? 'Which account got it?' : 'Paid from'}</Text>
+                {renderAccountChips(selectedAccount, setSelectedAccount)}
 
+                {activeTab === 'Transfer' && (
+                  <>
+                    <Text style={s2.step}>Send money to</Text>
+                    {activeAccounts.length < 2
+                      ? <Text style={s2.hint}>You need at least two accounts to move money.</Text>
+                      : renderAccountChips(selectedToAccount, setSelectedToAccount, selectedAccount?.id)}
+                  </>
+                )}
+
+                {/* Step 5: when? */}
+                <Text style={s2.step}>When?</Text>
+                <View style={s2.chipRow}>
+                  <Pressable style={[s2.chip, isToday(selectedDate) && s2.chipOn]} onPress={() => setSelectedDate(new Date())}>
+                    <Text style={[s2.chipText, isToday(selectedDate) && s2.chipTextOn]}>Today</Text>
+                  </Pressable>
+                  <Pressable style={[s2.chip, isYesterday && s2.chipOn]} onPress={() => setSelectedDate(yesterday)}>
+                    <Text style={[s2.chipText, isYesterday && s2.chipTextOn]}>Yesterday</Text>
+                  </Pressable>
+                  <Pressable style={[s2.chip, isCustomDate && s2.chipOn]} onPress={() => setShowDatePicker(true)}>
+                    <MaterialIcons name="calendar-today" size={14} color={isCustomDate ? colors.onPrimary : colors.onSurfaceVariant} />
+                    <Text style={[s2.chipText, isCustomDate && s2.chipTextOn]}>
+                      {isCustomDate ? selectedDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Pick date'}
+                    </Text>
+                  </Pressable>
+                </View>
                 {showDatePicker && (
-                  <View style={{ backgroundColor: colors.surfaceContainerLowest, alignItems: 'center' }}>
+                  <View style={{ alignItems: 'center' }}>
                     <DateTimePicker
                       value={selectedDate}
                       mode="date"
@@ -486,145 +415,89 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                       }}
                     />
                     {Platform.OS === 'ios' && (
-                      <Pressable
-                        style={[styles.primaryBtn, { height: 40, width: '90%', marginBottom: 12 }]}
-                        onPress={() => setShowDatePicker(false)}
-                      >
-                        <Text style={styles.primaryBtnText}>Confirm Date</Text>
+                      <Pressable style={[styles.primaryBtn, { height: 40, width: '90%' }]} onPress={() => setShowDatePicker(false)}>
+                        <Text style={styles.primaryBtnText}>Done</Text>
                       </Pressable>
                     )}
                   </View>
                 )}
 
-                {/* Merchant / Payee */}
-                <View style={styles.fieldRow}>
-                  <View style={styles.fieldLeft}>
-                    <View style={[styles.fieldIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
-                      <MaterialIcons name="storefront" size={18} color={colors.onSurfaceVariant} />
-                    </View>
-                    <View style={{ flex: 1, paddingRight: 10 }}>
-                      <Text style={styles.fieldLabel}>Merchant / Payee (Optional)</Text>
-                      <TextInput
-                        style={styles.noteInput}
-                        value={merchantName}
-                        onChangeText={setMerchantName}
-                        placeholder="e.g. Swiggy, Amazon, Salary"
-                        placeholderTextColor={colors.outline}
-                      />
-                    </View>
-                  </View>
-                </View>
+                {/* Optional details */}
+                {activeTab !== 'Transfer' && (
+                  <>
+                    <Text style={s2.step}>{activeTab === 'Income' ? 'Received from (optional)' : 'Paid to (optional)'}</Text>
+                    <TextInput
+                      style={s2.input}
+                      value={merchantName}
+                      onChangeText={setMerchantName}
+                      placeholder={activeTab === 'Income' ? 'e.g. Company, Rent, Client' : 'e.g. Swiggy, Grocery shop, Petrol pump'}
+                      placeholderTextColor={colors.outline}
+                    />
+                  </>
+                )}
+                {showNote ? (
+                  <>
+                    <Text style={s2.step}>Note (optional)</Text>
+                    <TextInput style={s2.input} value={note} onChangeText={setNote} placeholder="Anything to remember?" placeholderTextColor={colors.outline} />
+                  </>
+                ) : (
+                  <Pressable onPress={() => setShowNote(true)} style={s2.addNote}>
+                    <MaterialIcons name="add" size={16} color={colors.primary} />
+                    <Text style={s2.addNoteText}>Add a note</Text>
+                  </Pressable>
+                )}
+              </ScrollView>
 
-                {/* Note */}
-                <View style={[styles.fieldRow, { borderBottomWidth: 0 }]}>
-                  <View style={styles.fieldLeft}>
-                    <View style={[styles.fieldIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
-                      <MaterialIcons name="edit" size={18} color={colors.onSurfaceVariant} />
-                    </View>
-                    <View style={{ flex: 1, paddingRight: 10 }}>
-                      <Text style={styles.fieldLabel}>Note (Optional)</Text>
-                      <TextInput
-                        style={styles.noteInput}
-                        value={note}
-                        onChangeText={setNote}
-                        placeholder="Add a remark..."
-                        placeholderTextColor={colors.outline}
-                      />
-                    </View>
-                  </View>
-                </View>
-              </View>
-
-              {/* Save Button */}
+              {/* Plain-language summary + save */}
               <View style={styles.footer}>
+                {!!parseFloat(amount) && (
+                  <Text style={s2.summary} numberOfLines={1}>
+                    {meta.verb} ₹{(parseFloat(amount) || 0).toLocaleString('en-IN')}
+                    {activeTab !== 'Transfer' && selectedCategory ? ` on ${selectedCategory.name}` : ''}
+                    {selectedAccount ? ` · ${selectedAccount.name}` : ''}
+                  </Text>
+                )}
                 <Pressable
-                  style={[styles.primaryBtn, isSubmitting && { opacity: 0.7 }]}
+                  style={[styles.primaryBtn, { backgroundColor: meta.color }, isSubmitting && { opacity: 0.7 }]}
                   onPress={validateAndSave}
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? (
-                    <ActivityIndicator color={colors.onPrimary} />
-                  ) : (
-                    <Text style={styles.primaryBtnText}>
-                      {isEditMode ? 'Save Changes' : activeTab === 'Transfer' ? 'Transfer' : `Save ${activeTab}`}
-                    </Text>
-                  )}
+                  {isSubmitting ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.primaryBtnText}>{saveLabel}</Text>}
                 </Pressable>
               </View>
             </>
           )}
         </View>
-
-        {/* ── Selector Sheet Overlay ── */}
-        {selectorVisible && (
-          <View style={styles.selectorOverlay}>
-            <Pressable style={styles.backdrop} onPress={() => setSelectorVisible(false)} />
-            <View style={styles.selectorSheet}>
-              <View style={styles.headerRow}>
-                <Text style={styles.headerTitle}>{selectorTitle}</Text>
-                <Pressable onPress={() => setSelectorVisible(false)} style={styles.closeButton}>
-                  <MaterialIcons name="close" size={22} color={colors.onSurfaceVariant} />
-                </Pressable>
-              </View>
-
-              {/* Empty state */}
-              {(selectorType === 'category' ? displayCategories : activeAccounts).length === 0 ? (
-                <View style={styles.selectorEmpty}>
-                  <MaterialIcons name="info-outline" size={32} color={colors.outline} />
-                  <Text style={styles.selectorEmptyTitle}>
-                    {selectorType === 'category' ? 'No categories available' : 'No accounts available'}
-                  </Text>
-                  <Text style={styles.selectorEmptyDesc}>
-                    {selectorType === 'category'
-                      ? 'Add categories from the settings first.'
-                      : 'Go to More → Accounts to add a bank account.'}
-                  </Text>
-                </View>
-              ) : (
-                <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
-                  {(selectorType === 'category' ? displayCategories : activeAccounts).map(item => {
-                    const isSelected = selectorType === 'category'
-                      ? selectedCategory?.id === item.id
-                      : selectorType === 'toAccount'
-                      ? selectedToAccount?.id === item.id
-                      : selectedAccount?.id === item.id;
-
-                    return (
-                      <Pressable
-                        key={item.id}
-                        style={[styles.selectorItem, isSelected && styles.selectorItemSelected]}
-                        onPress={() => handleSelectorSelect(item)}
-                      >
-                        <View style={[styles.fieldIcon, { backgroundColor: getItemColor(item) }]}>
-                          <MaterialIcons
-                            name={getItemIcon(item) as any}
-                            size={18}
-                            color={colors.onSurface}
-                          />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.fieldValue, isSelected && { color: colors.primary }]}>
-                            {'name' in item ? (item as Category).name : (item as Account).name}
-                          </Text>
-                          {getItemSubtitle(item) ? (
-                            <Text style={styles.fieldLabel}>{getItemSubtitle(item)}</Text>
-                          ) : null}
-                        </View>
-                        {isSelected && (
-                          <MaterialIcons name="check-circle" size={18} color={colors.primary} />
-                        )}
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-              )}
-            </View>
-          </View>
-        )}
       </KeyboardAvoidingView>
     </Modal>
   );
 };
+
+const s2 = StyleSheet.create({
+  tabs: { flexDirection: 'row', gap: 8, marginBottom: 4 },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 14, backgroundColor: colors.surfaceContainer },
+  tabText: { fontFamily: 'Inter_700Bold', fontSize: 13, color: colors.onSurface },
+  step: { fontFamily: 'Inter_700Bold', fontSize: 14, color: colors.onSurface, marginTop: 18, marginBottom: 10 },
+  amountBox: { backgroundColor: colors.surfaceContainerLow, borderRadius: 16, paddingVertical: 10 },
+  quickAmounts: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  quickAmt: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 10, backgroundColor: colors.surfaceContainer },
+  quickAmtText: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: colors.onSurfaceVariant },
+  catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  cat: { width: '23%', alignItems: 'center', gap: 6, paddingVertical: 10, borderRadius: 14, borderWidth: 2, borderColor: 'transparent' },
+  catOn: { borderColor: colors.primaryContainer, backgroundColor: colors.surfaceContainerLow },
+  catIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  catText: { fontFamily: 'Inter_500Medium', fontSize: 11, color: colors.onSurfaceVariant, paddingHorizontal: 2 },
+  chipRow: { flexDirection: 'row', gap: 8, paddingRight: 8 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, backgroundColor: colors.surfaceContainer, maxWidth: 200 },
+  chipOn: { backgroundColor: colors.primaryContainer },
+  chipText: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.onSurface },
+  chipTextOn: { color: colors.onPrimary },
+  input: { height: 50, borderRadius: 14, paddingHorizontal: 14, backgroundColor: colors.surfaceContainerLow, borderWidth: 1, borderColor: colors.outlineVariant, fontFamily: 'Inter_500Medium', fontSize: 15, color: colors.onSurface },
+  hint: { fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.onSurfaceVariant },
+  addNote: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 16 },
+  addNoteText: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.primary },
+  summary: { fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.onSurfaceVariant, textAlign: 'center', marginBottom: 10 },
+});
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({

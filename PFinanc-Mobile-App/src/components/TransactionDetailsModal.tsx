@@ -35,7 +35,7 @@ export const TransactionDetailsModal: React.FC<TransactionDetailsModalProps> = (
                 <MaterialIcons name={data.icon || "receipt-long"} size={26} color={colors.primary} />
               </View>
               <View>
-                <Text style={styles.headerSubtitle}>Transaction Record</Text>
+                <Text style={styles.headerSubtitle}>Entry details</Text>
                 <Text style={styles.headerTitle}>{data.merchant}</Text>
               </View>
             </View>
@@ -48,7 +48,7 @@ export const TransactionDetailsModal: React.FC<TransactionDetailsModalProps> = (
             {/* Amount */}
             <View style={styles.amountBox}>
               <View>
-                <Text style={styles.amountLabel}>Total Settled</Text>
+                <Text style={styles.amountLabel}>Amount</Text>
                 <Text style={styles.amountValue}>{data.amount}</Text>
               </View>
               <View style={styles.badge}>
@@ -60,7 +60,7 @@ export const TransactionDetailsModal: React.FC<TransactionDetailsModalProps> = (
             {/* Meta Grid */}
             <View style={styles.metaGrid}>
               <View style={styles.metaRow}>
-                <Text style={styles.metaLabel}>Timestamp</Text>
+                <Text style={styles.metaLabel}>Date</Text>
                 <Text style={styles.metaValue}>{data.date}</Text>
               </View>
               <View style={styles.metaRow}>
@@ -70,18 +70,18 @@ export const TransactionDetailsModal: React.FC<TransactionDetailsModalProps> = (
                 </View>
               </View>
               <View style={styles.metaRow}>
-                <Text style={styles.metaLabel}>Settlement Account</Text>
+                <Text style={styles.metaLabel}>Account</Text>
                 <Text style={styles.metaValue}>{data.account}</Text>
               </View>
               <View style={styles.metaRow}>
-                <Text style={styles.metaLabel}>Audit Source</Text>
+                <Text style={styles.metaLabel}>Added by</Text>
                 <View style={styles.sourceBox}>
                   <View style={styles.sourceDot} />
-                  <Text style={styles.sourceText}>{data.source || 'Manual Entry'}</Text>
+                  <Text style={styles.sourceText}>{data.source === 'MANUAL' || !data.source ? 'You (manual)' : data.source}</Text>
                 </View>
               </View>
               <View style={styles.metaRow}>
-                <Text style={styles.metaLabel}>Family Owner</Text>
+                <Text style={styles.metaLabel}>Family member</Text>
                 <View style={styles.ownerBox}>
                   <View style={styles.ownerAvatar}>
                     <Text style={styles.ownerAvatarText}>{data.owner ? data.owner[0] : 'M'}</Text>

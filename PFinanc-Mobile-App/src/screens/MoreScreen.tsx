@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Image, Pressable, TextInput } from 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
+import { comingSoon } from '../utils/notify';
 import { FamilyScopeModal } from '../components/FamilyScopeModal';
 import { InviteMemberModal } from '../components/InviteMemberModal';
 import { apiClient } from '../api/client';
@@ -243,7 +244,7 @@ export const MoreScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
               </View>
             </Pressable>
             <View style={styles.divider} />
-            <Pressable style={styles.moduleItem}>
+            <Pressable style={styles.moduleItem} onPress={() => onNavigate && onNavigate('familyMember')}>
               <View style={styles.moduleItemLeft}>
                 <View style={styles.moduleIconBox}>
                   <MaterialIcons name="admin-panel-settings" size={22} color={colors.primaryContainer} />
@@ -362,7 +363,7 @@ export const MoreScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
               <MaterialIcons name="chevron-right" size={20} color={colors.outline} />
             </Pressable>
             <View style={styles.divider} />
-            <Pressable style={styles.moduleItem}>
+            <Pressable style={styles.moduleItem} onPress={() => onNavigate && onNavigate('security')}>
               <View style={styles.moduleItemLeft}>
                 <View style={styles.moduleIconBox}>
                   <MaterialIcons name="shield" size={22} color={colors.primaryContainer} />
@@ -375,7 +376,7 @@ export const MoreScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
               <MaterialIcons name="chevron-right" size={20} color={colors.outline} />
             </Pressable>
             <View style={styles.divider} />
-            <Pressable style={styles.moduleItem}>
+            <Pressable style={styles.moduleItem} onPress={() => comingSoon('Palette')}>
               <View style={styles.moduleItemLeft}>
                 <View style={styles.moduleIconBox}>
                   <MaterialIcons name="palette" size={22} color={colors.primaryContainer} />
@@ -388,7 +389,7 @@ export const MoreScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
               <MaterialIcons name="chevron-right" size={20} color={colors.outline} />
             </Pressable>
             <View style={styles.divider} />
-            <Pressable style={styles.moduleItem}>
+            <Pressable style={styles.moduleItem} onPress={() => comingSoon('Code')}>
               <View style={styles.moduleItemLeft}>
                 <View style={styles.moduleIconBox}>
                   <MaterialIcons name="code" size={22} color={colors.primaryContainer} />

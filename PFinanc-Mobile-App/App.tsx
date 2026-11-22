@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { View, StyleSheet, Text, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Text, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { 
   useFonts,
@@ -60,9 +60,31 @@ const MainNavigator = () => {
   const [activeScreen, setActiveScreen] = useState('none');
   const [isUnlocked, setIsUnlocked] = useState(false);
 
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const openAdd = (type: 'expense' | 'income' | 'transfer') => {
+    setQuickAddInitialTab(type === 'income' ? 'Income' : type === 'transfer' ? 'Transfer' : 'Expense');
+    setModalVisible(true);
+  };
+
+  const [txnFilter, setTxnFilter] = useState<{ value: string; nonce: number }>({ value: 'All', nonce: 0 });
+
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
     setActiveScreen('none');
+    if (tab === 'history') setTxnFilter({ value: 'All', nonce: Date.now() });
+  };
+
+  // Central navigation: tab names switch tabs (optionally with a Transactions filter),
+  // anything else opens a full-screen page.
+  const navigate = (target: string, params?: { filter?: string }) => {
+    if (target === 'home' || target === 'history' || target === 'portfolio' || target === 'more') {
+      setActiveTab(target);
+      setActiveScreen('none');
+      if (target === 'history') setTxnFilter({ value: params?.filter ?? 'All', nonce: Date.now() });
+      return;
+    }
+    setActiveScreen(target);
   };
 
   if (isLoading) {
@@ -83,27 +105,27 @@ const MainNavigator = () => {
 
   return (
     <View style={styles.container}>
-      {activeScreen === 'none' && activeTab === 'home' && <HomeScreen onNavigate={(s) => setActiveScreen(s)} />}
-      {activeScreen === 'none' && activeTab === 'history' && <TransactionsScreen />}
-      {activeScreen === 'none' && activeTab === 'portfolio' && <PortfolioScreen />}
-      {activeScreen === 'none' && activeTab === 'more' && <MoreScreen onNavigate={(screen) => setActiveScreen(screen)} />}
+      {activeScreen === 'none' && activeTab === 'home' && <HomeScreen onNavigate={navigate} onAddEntry={openAdd} refreshKey={refreshKey} />}
+      {activeScreen === 'none' && activeTab === 'history' && <TransactionsScreen onNavigate={navigate} initialFilter={txnFilter} onAddEntry={openAdd} refreshKey={refreshKey} />}
+      {activeScreen === 'none' && activeTab === 'portfolio' && <PortfolioScreen onNavigate={navigate} />}
+      {activeScreen === 'none' && activeTab === 'more' && <MoreScreen onNavigate={navigate} />}
 
       {activeScreen === 'insights' && <InsightsScreen onBack={() => setActiveScreen('none')} />}
       {activeScreen === 'budgets' && <BudgetsScreen onBack={() => setActiveScreen('none')} />}
-      {activeScreen === 'advisor' && <AIAdvisorScreen onBack={() => setActiveScreen('none')} />}
-      {activeScreen === 'imports' && <StatementImportScreen onBack={() => setActiveScreen('none')} />}
+      {activeScreen === 'advisor' && <AIAdvisorScreen onBack={() => setActiveScreen('none')} onNavigate={navigate} />}
+      {activeScreen === 'imports' && <StatementImportScreen onBack={() => setActiveScreen('none')} onNavigate={navigate} />}
       {activeScreen === 'security' && <SecurityScreen onBack={() => setActiveScreen('none')} />}
-      {activeScreen === 'familyMember' && <FamilyMemberScreen onBack={() => setActiveScreen('none')} />}
-      {activeScreen === 'audit' && <AuditLogScreen onBack={() => setActiveScreen('none')} />}
-      {activeScreen === 'notifications' && <NotificationsScreen onBack={() => setActiveScreen('none')} onNavigate={(s) => setActiveScreen(s)} />}
+      {activeScreen === 'familyMember' && <FamilyMemberScreen onBack={() => setActiveScreen('none')} onNavigate={navigate} />}
+      {activeScreen === 'audit' && <AuditLogScreen onBack={() => setActiveScreen('none')} onNavigate={navigate} />}
+      {activeScreen === 'notifications' && <NotificationsScreen onBack={() => setActiveScreen('none')} onNavigate={navigate} />}
       {activeScreen === 'smsReview' && <SMSReviewScreen onBack={() => setActiveScreen('none')} />}
       {activeScreen === 'accounts' && <AccountsScreen onBack={() => setActiveScreen('none')} />}
-      {activeScreen === 'vaultIntro' && <VaultIntroductionScreen onBack={() => setActiveScreen('none')} onNavigate={(s) => setActiveScreen(s)} />}
-      {activeScreen === 'vaultSecuritySetup' && <VaultSecuritySetupScreen onBack={() => setActiveScreen('vaultIntro')} onNavigate={(s) => setActiveScreen(s)} />}
-      {activeScreen === 'vaultReady' && <VaultReadyScreen onBack={() => setActiveScreen('none')} onNavigate={(s) => setActiveScreen(s)} />}
-      {activeScreen === 'vaultOverview' && <VaultOverviewScreen onBack={() => setActiveScreen('none')} onNavigate={(s) => setActiveScreen(s)} />}
-      {activeScreen === 'addPassword' && <AddPasswordScreen onBack={() => setActiveScreen('vaultOverview')} onNavigate={(s) => setActiveScreen(s)} />}
-      {activeScreen === 'passwordDetails' && <PasswordDetailsScreen onBack={() => setActiveScreen('vaultOverview')} onNavigate={(s) => setActiveScreen(s)} />}
+      {activeScreen === 'vaultIntro' && <VaultIntroductionScreen onBack={() => setActiveScreen('none')} onNavigate={navigate} />}
+      {activeScreen === 'vaultSecuritySetup' && <VaultSecuritySetupScreen onBack={() => setActiveScreen('vaultIntro')} onNavigate={navigate} />}
+      {activeScreen === 'vaultReady' && <VaultReadyScreen onBack={() => setActiveScreen('none')} onNavigate={navigate} />}
+      {activeScreen === 'vaultOverview' && <VaultOverviewScreen onBack={() => setActiveScreen('none')} onNavigate={navigate} />}
+      {activeScreen === 'addPassword' && <AddPasswordScreen onBack={() => setActiveScreen('vaultOverview')} onNavigate={navigate} />}
+      {activeScreen === 'passwordDetails' && <PasswordDetailsScreen onBack={() => setActiveScreen('vaultOverview')} onNavigate={navigate} />}
 
       <BottomNav 
         activeTab={activeTab}
@@ -126,7 +148,10 @@ const MainNavigator = () => {
             setQuickAddInitialTab('Transfer');
             setModalVisible(true);
           } else if (action === 'scan') {
-            // Scan not implemented yet
+            Alert.alert('Scan receipt', 'Receipt scanning is coming soon. Use Statement Import to add transactions in bulk.', [
+              { text: 'Not now', style: 'cancel' },
+              { text: 'Open Imports', onPress: () => navigate('imports') },
+            ]);
           }
         }}
       />
@@ -134,6 +159,7 @@ const MainNavigator = () => {
         visible={modalVisible} 
         onClose={() => setModalVisible(false)} 
         initialTab={quickAddInitialTab}
+        onSaved={() => setRefreshKey(k => k + 1)}
       />
       <VoiceAIModal
         visible={voiceAIVisible}

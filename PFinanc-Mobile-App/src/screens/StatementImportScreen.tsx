@@ -3,8 +3,10 @@ import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
+import { comingSoon } from '../utils/notify';
 
-export const StatementImportScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
+export const StatementImportScreen: React.FC<{ onBack?: () => void; onNavigate?: (screen: string, params?: { filter?: string }) => void }> = ({ onBack, onNavigate }) => {
+  const go = (screen: string, params?: { filter?: string }) => onNavigate && onNavigate(screen, params);
   const insets = useSafeAreaInsets();
   const [activeFilter, setActiveFilter] = useState('All (48)');
 
@@ -22,7 +24,7 @@ export const StatementImportScreen: React.FC<{ onBack?: () => void }> = ({ onBac
             <MaterialIcons name="security" size={14} color={colors.primary} />
             <Text style={styles.securityBadgeText}>LOCAL-FIRST • ENCRYPTED</Text>
           </View>
-          <Pressable style={styles.iconBtnAlt}>
+          <Pressable style={styles.iconBtnAlt} onPress={() => comingSoon('Help outline')}>
             <MaterialIcons name="help-outline" size={20} color={colors.onSurfaceVariant} />
           </Pressable>
         </View>
@@ -70,7 +72,7 @@ export const StatementImportScreen: React.FC<{ onBack?: () => void }> = ({ onBac
                 <Text style={styles.accountSubtitle}>•• 4821 • <Text style={styles.accountBalance}>₹82,450 balance</Text></Text>
               </View>
             </View>
-            <Pressable style={styles.changeBtn}>
+            <Pressable style={styles.changeBtn} onPress={() => comingSoon('Unfold more')}>
               <MaterialIcons name="unfold-more" size={20} color={colors.onSurfaceVariant} />
             </Pressable>
           </View>
@@ -158,7 +160,7 @@ export const StatementImportScreen: React.FC<{ onBack?: () => void }> = ({ onBac
               <Text style={styles.parsedTitle}>Parsed Transactions</Text>
               <Text style={styles.parsedSubtitle}>48 ITEMS FOUND • ₹1,42,850 VOLUME</Text>
             </View>
-            <Pressable style={styles.visibilityBtn}>
+            <Pressable style={styles.visibilityBtn} onPress={() => comingSoon('Visibility')}>
               <MaterialIcons name="visibility" size={18} color={colors.onSurfaceVariant} />
             </Pressable>
           </View>
@@ -234,10 +236,10 @@ export const StatementImportScreen: React.FC<{ onBack?: () => void }> = ({ onBac
                   <Text style={styles.resolutionText}>Matches Manual Entry</Text>
                 </View>
                 <View style={styles.resolutionBtns}>
-                  <Pressable style={styles.resMergeBtn}>
+                  <Pressable style={styles.resMergeBtn} onPress={() => comingSoon('Merge')}>
                     <Text style={styles.resMergeBtnText}>Merge</Text>
                   </Pressable>
-                  <Pressable style={styles.resSkipBtn}>
+                  <Pressable style={styles.resSkipBtn} onPress={() => comingSoon('Skip')}>
                     <Text style={styles.resSkipBtnText}>Skip</Text>
                   </Pressable>
                 </View>
@@ -306,11 +308,11 @@ export const StatementImportScreen: React.FC<{ onBack?: () => void }> = ({ onBac
 
       {/* Sticky Bottom Actions */}
       <View style={[styles.bottomActions, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-        <Pressable style={styles.primaryActionBtn}>
+        <Pressable style={styles.primaryActionBtn} onPress={() => go('history', { filter: 'Needs Review' })}>
           <Text style={styles.primaryActionBtnText}>Proceed to Review (3 items)</Text>
           <MaterialIcons name="arrow-forward" size={18} color={colors.onPrimary} />
         </Pressable>
-        <Pressable style={styles.secondaryActionBtn}>
+        <Pressable style={styles.secondaryActionBtn} onPress={() => comingSoon('Re upload / Change Account')}>
           <Text style={styles.secondaryActionBtnText}>Re-upload / Change Account</Text>
         </Pressable>
         <Text style={styles.footerNoteText}>

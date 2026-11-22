@@ -23,10 +23,10 @@ export const QuickActionMenu: React.FC<QuickActionMenuProps> = ({ visible, onClo
         <View style={styles.menuContainer}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Quick Action</Text>
+            <Text style={styles.headerTitle}>What would you like to do?</Text>
             <View style={styles.fastRecordBadge}>
               <MaterialIcons name="bolt" size={13} color={colors.primary} />
-              <Text style={styles.fastRecordText}>Fast Record</Text>
+              <Text style={styles.fastRecordText}>Quick</Text>
             </View>
           </View>
 
@@ -40,12 +40,12 @@ export const QuickActionMenu: React.FC<QuickActionMenuProps> = ({ visible, onClo
             </View>
             <View style={styles.actionBody}>
               <View style={styles.actionTitleRow}>
-                <Text style={styles.aiActionTitle}>Speak or Type Naturally</Text>
+                <Text style={styles.aiActionTitle}>Just tell me</Text>
                 <View style={styles.aiBadge}>
-                  <Text style={styles.aiBadgeText}>AI Powered</Text>
+                  <Text style={styles.aiBadgeText}>Voice</Text>
                 </View>
               </View>
-              <Text style={styles.aiActionSubtitle}>e.g. Paid 350 for coffee with UPI</Text>
+              <Text style={styles.aiActionSubtitle}>Say: "Paid 350 for coffee"</Text>
             </View>
           </Pressable>
 
@@ -59,10 +59,10 @@ export const QuickActionMenu: React.FC<QuickActionMenuProps> = ({ visible, onClo
             </View>
             <View style={styles.actionBody}>
               <View style={styles.actionTitleRow}>
-                <Text style={styles.actionTitle}>Add Expense</Text>
+                <Text style={styles.actionTitle}>Money Out</Text>
                 <MaterialIcons name="arrow-forward" size={16} color={colors.outline} style={styles.forwardIcon} />
               </View>
-              <Text style={styles.actionSubtitle}>Log daily spend, bill, or UPI payment</Text>
+              <Text style={styles.actionSubtitle}>Spent on something? Add it here</Text>
             </View>
           </Pressable>
 
@@ -76,10 +76,10 @@ export const QuickActionMenu: React.FC<QuickActionMenuProps> = ({ visible, onClo
             </View>
             <View style={styles.actionBody}>
               <View style={styles.actionTitleRow}>
-                <Text style={styles.actionTitle}>Add Income</Text>
+                <Text style={styles.actionTitle}>Money In</Text>
                 <MaterialIcons name="arrow-forward" size={16} color={colors.outline} style={styles.forwardIcon} />
               </View>
-              <Text style={styles.actionSubtitle}>Salary, dividend, or freelance inflow</Text>
+              <Text style={styles.actionSubtitle}>Salary or any money you received</Text>
             </View>
           </Pressable>
 
@@ -94,14 +94,14 @@ export const QuickActionMenu: React.FC<QuickActionMenuProps> = ({ visible, onClo
             <View style={styles.actionBody}>
               <View style={styles.actionTitleRow}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.actionTitle}>Transfer</Text>
+                  <Text style={styles.actionTitle}>Move Money</Text>
                   <View style={styles.frequentBadge}>
                     <Text style={styles.frequentBadgeText}>Frequent</Text>
                   </View>
                 </View>
                 <MaterialIcons name="arrow-forward" size={16} color={colors.outline} style={styles.forwardIcon} />
               </View>
-              <Text style={styles.actionSubtitle}>Move funds between accounts & vaults</Text>
+              <Text style={styles.actionSubtitle}>Between your own accounts</Text>
             </View>
           </Pressable>
 
@@ -113,7 +113,7 @@ export const QuickActionMenu: React.FC<QuickActionMenuProps> = ({ visible, onClo
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <MaterialIcons name="photo-camera" size={18} color={colors.primary} />
-                <Text style={styles.scanActionTitle}>Scan Receipt / Bill QR</Text>
+                <Text style={styles.scanActionTitle}>Scan a Bill</Text>
               </View>
               <View style={styles.instantAIBadge}>
                 <Text style={styles.instantAIBadgeText}>Instant AI</Text>

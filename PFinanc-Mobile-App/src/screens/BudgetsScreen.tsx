@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable, Switch } from 'react-nat
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
+import { comingSoon } from '../utils/notify';
 
 export const BudgetsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const insets = useSafeAreaInsets();
@@ -24,11 +25,11 @@ export const BudgetsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => 
           </View>
         </View>
         <View style={styles.headerRight}>
-          <Pressable style={styles.newBtn}>
+          <Pressable style={styles.newBtn} onPress={() => comingSoon('New')}>
             <MaterialIcons name="add" size={16} color={colors.onPrimary} />
             <Text style={styles.newBtnText}>New</Text>
           </Pressable>
-          <Pressable style={styles.filterBtn}>
+          <Pressable style={styles.filterBtn} onPress={() => comingSoon('Tune')}>
             <MaterialIcons name="tune" size={20} color={colors.onSurfaceVariant} />
           </Pressable>
         </View>
@@ -70,7 +71,7 @@ export const BudgetsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => 
               <MaterialIcons name="arrow-back-ios" size={12} color={colors.primaryFixedDim} />
               <Text style={styles.heroFooterText}>On Track: ₹46,580 safe buffer</Text>
             </View>
-            <Pressable style={styles.rolloverBtn}>
+            <Pressable style={styles.rolloverBtn} onPress={() => comingSoon('Rollover Surplus')}>
               <Text style={styles.rolloverBtnText}>Rollover Surplus</Text>
               <MaterialIcons name="arrow-forward" size={14} color={colors.onPrimary} />
             </Pressable>
@@ -103,7 +104,7 @@ export const BudgetsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => 
                   </View>
                 </View>
               </View>
-              <Pressable style={styles.editBtn}>
+              <Pressable style={styles.editBtn} onPress={() => comingSoon('Edit')}>
                 <MaterialIcons name="edit" size={18} color={colors.onSurfaceVariant} />
               </Pressable>
             </View>
@@ -234,10 +235,10 @@ export const BudgetsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => 
               </View>
             </View>
             <View style={styles.actionChipsRow}>
-              <Pressable style={styles.actionChip}>
+              <Pressable style={styles.actionChip} onPress={() => comingSoon('Adjust Cap')}>
                 <Text style={styles.actionChipText}>Adjust Cap</Text>
               </Pressable>
-              <Pressable style={styles.actionChip}>
+              <Pressable style={styles.actionChip} onPress={() => comingSoon('Borrow from Entertainment')}>
                 <Text style={styles.actionChipText}>Borrow from Entertainment</Text>
               </Pressable>
             </View>
@@ -403,7 +404,7 @@ export const BudgetsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => 
 
         {/* Footer Actions */}
         <View style={styles.footerSection}>
-          <Pressable style={styles.primaryActionBtn}>
+          <Pressable style={styles.primaryActionBtn} onPress={() => comingSoon('Add Custom Category / Rule')}>
             <MaterialIcons name="add" size={22} color={colors.onPrimary} />
             <Text style={styles.primaryActionBtnText}>Add Custom Category / Rule</Text>
           </Pressable>

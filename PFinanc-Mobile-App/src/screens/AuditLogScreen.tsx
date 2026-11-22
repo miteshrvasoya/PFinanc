@@ -3,8 +3,10 @@ import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
+import { comingSoon } from '../utils/notify';
 
-export const AuditLogScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
+export const AuditLogScreen: React.FC<{ onBack?: () => void; onNavigate?: (screen: string, params?: { filter?: string }) => void }> = ({ onBack, onNavigate }) => {
+  const go = (screen: string, params?: { filter?: string }) => onNavigate && onNavigate(screen, params);
   const insets = useSafeAreaInsets();
   const [activeFilter, setActiveFilter] = useState('All Imports (12)');
 
@@ -33,10 +35,10 @@ export const AuditLogScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
           </View>
         </View>
         <View style={styles.headerRight}>
-          <Pressable style={styles.iconBtn}>
+          <Pressable style={styles.iconBtn} onPress={() => comingSoon('Download')}>
             <MaterialIcons name="download" size={20} color={colors.onSurface} />
           </Pressable>
-          <Pressable style={styles.iconBtn}>
+          <Pressable style={styles.iconBtn} onPress={() => comingSoon('Tune')}>
             <MaterialIcons name="tune" size={20} color={colors.onSurface} />
           </Pressable>
         </View>
@@ -64,7 +66,7 @@ export const AuditLogScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
         <View style={styles.filtersSection}>
           <View style={styles.filtersHeader}>
             <Text style={styles.filtersLabel}>VERIFICATION SCOPE</Text>
-            <Pressable style={styles.fySelector}>
+            <Pressable style={styles.fySelector} onPress={() => comingSoon('FY 2024–25')}>
               <Text style={styles.fySelectorText}>FY 2024–25</Text>
               <MaterialIcons name="expand-more" size={16} color={colors.primary} />
             </Pressable>
@@ -168,10 +170,10 @@ export const AuditLogScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
                   <Text style={styles.hashText}>sha256: 4f8a•••9c2e</Text>
                 </View>
                 <View style={styles.auditFooterActions}>
-                  <Pressable>
+                  <Pressable onPress={() => comingSoon('Rollback')}>
                     <Text style={styles.rollbackText}>Rollback</Text>
                   </Pressable>
-                  <Pressable style={styles.viewBatchBtn}>
+                  <Pressable style={styles.viewBatchBtn} onPress={() => go('imports')}>
                     <Text style={styles.viewBatchText}>View Batch</Text>
                     <MaterialIcons name="chevron-right" size={14} color={colors.primaryContainer} />
                   </Pressable>
@@ -213,7 +215,7 @@ export const AuditLogScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
                   <MaterialIcons name="enhanced-encryption" size={13} color={colors.primary} />
                   <Text style={[styles.hashText, { color: colors.primary }]}>PII Redacted: Card # & address stripped</Text>
                 </View>
-                <Pressable style={styles.viewBatchBtn}>
+                <Pressable style={styles.viewBatchBtn} onPress={() => go('imports')}>
                   <Text style={styles.viewBatchText}>View Batch</Text>
                   <MaterialIcons name="chevron-right" size={14} color={colors.primaryContainer} />
                 </Pressable>
@@ -265,7 +267,7 @@ export const AuditLogScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
                   <MaterialIcons name="commit" size={14} color={colors.primary} />
                   <Text style={styles.hashText}>COMMIT #IMP-8821</Text>
                 </View>
-                <Pressable style={styles.viewBatchBtn}>
+                <Pressable style={styles.viewBatchBtn} onPress={() => go('portfolio')}>
                   <Text style={styles.viewBatchText}>Folio Detail</Text>
                   <MaterialIcons name="chevron-right" size={14} color={colors.primaryContainer} />
                 </Pressable>
@@ -306,7 +308,7 @@ export const AuditLogScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
                   <MaterialIcons name="fingerprint" size={14} color={colors.primary} />
                   <Text style={styles.hashText}>sha256: 7b1c•••881a</Text>
                 </View>
-                <Pressable style={styles.viewBatchBtn}>
+                <Pressable style={styles.viewBatchBtn} onPress={() => go('imports')}>
                   <Text style={styles.viewBatchText}>View Batch</Text>
                   <MaterialIcons name="chevron-right" size={14} color={colors.primaryContainer} />
                 </Pressable>
@@ -324,7 +326,7 @@ export const AuditLogScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
           <Text style={styles.guaranteeDesc}>
             Bank & CAS statements are decrypted solely in local volatile memory. Reversible commit hashes allow clean rolling back of any imported period without corrupting past balance sheets.
           </Text>
-          <Pressable style={styles.downloadBtn}>
+          <Pressable style={styles.downloadBtn} onPress={() => comingSoon('Download Full Reconciliation Audit (.PDF)')}>
             <MaterialIcons name="summarize" size={18} color={colors.onPrimaryFixed} />
             <Text style={styles.downloadBtnText}>Download Full Reconciliation Audit (.PDF)</Text>
           </Pressable>
