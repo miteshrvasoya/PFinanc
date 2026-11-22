@@ -34,6 +34,7 @@ export const Sidebar: React.FC<{ onQuickAction: () => void }> = ({ onQuickAction
     { id: 'family', href: '/family', label: 'Family', icon: <Users className="w-5 h-5" /> },
     { id: 'analytics', href: '/analytics', label: 'Analytics', icon: <BarChart3 className="w-5 h-5" /> },
     { id: 'imports', href: '/imports', label: 'Imports', icon: <FileSpreadsheet className="w-5 h-5" /> },
+    { id: 'ai-advisor', href: '/ai-advisor', label: 'AI Advisor', icon: <BotMessageSquare className="w-5 h-5" /> },
   ];
 
   const renderNav = (items: typeof primaryNavItems) => (

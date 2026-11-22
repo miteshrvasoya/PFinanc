@@ -447,8 +447,9 @@ export const AIAdvisorScreen: React.FC<Props> = ({ onBack, onNavigate }) => {
         </Pressable>
         <Text style={styles.headerTitle}>{view === 'settings' ? 'AI settings' : 'AI Advisor'}</Text>
         {view === 'report' ? (
-          <Pressable onPress={() => setView('settings')} style={styles.headerBtn} hitSlop={8} accessibilityLabel="AI settings">
-            <MaterialIcons name="settings" size={22} color={colors.primary} />
+          <Pressable onPress={() => setView('settings')} style={styles.settingsBtn} hitSlop={8} accessibilityLabel="AI settings and API key">
+            <MaterialIcons name="settings" size={18} color={colors.primary} />
+            <Text style={styles.settingsBtnText}>Settings</Text>
           </Pressable>
         ) : <View style={styles.headerBtn} />}
       </View>
@@ -475,6 +476,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
   headerBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceContainerLow },
+  settingsBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 40, paddingHorizontal: 12, borderRadius: 20, backgroundColor: colors.surfaceContainerLow },
+  settingsBtnText: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.primary },
   headerTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 20, color: colors.primary },
   tabs: { flexDirection: 'row', gap: 8, marginHorizontal: 20, marginBottom: 8, padding: 4, borderRadius: 16, backgroundColor: colors.surfaceContainer },
   tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 40, borderRadius: 12 },

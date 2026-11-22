@@ -142,6 +142,10 @@ export const Header: React.FC = () => {
                   <Link href="/ai-advisor" onClick={() => setShowNotifDropdown(false)} className="text-xs text-indigo-400 hover:text-indigo-300 font-medium">
                     Open AI Advisor →
                   </Link>
+                  <span className="text-slate-700 mx-2">·</span>
+                  <Link href="/ai-advisor?tab=settings" onClick={() => setShowNotifDropdown(false)} className="text-xs text-slate-400 hover:text-slate-200 font-medium">
+                    AI settings (API key)
+                  </Link>
                 </div>
               </div>
             )}

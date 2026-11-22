@@ -354,6 +354,11 @@ const SettingsPanel: React.FC<{
 export default function AIAdvisorPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+
+  // Deep link: /ai-advisor?tab=settings opens the API key / model settings directly
+  useEffect(() => {
+    if (router.query.tab === 'settings') setActiveTab('settings');
+  }, [router.query.tab]);
   const [report, setReport] = useState<Report | null>(null);
   const [reports, setReports] = useState<Report[]>([]);
   const [runs, setRuns] = useState<any[]>([]);
