@@ -1,967 +1,533 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, Pressable, TextInput } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, Pressable, TextInput, Switch,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Platform, RefreshControl,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
-import { comingSoon } from '../utils/notify';
+import { apiClient } from '../api/client';
 
-export const AIAdvisorScreen: React.FC<{ onBack?: () => void; onNavigate?: (screen: string, params?: { filter?: string }) => void }> = ({ onBack, onNavigate }) => {
-  const go = (screen: string, params?: { filter?: string }) => onNavigate && onNavigate(screen, params);
+type Provider = 'OPENROUTER' | 'OPENAI' | 'GEMINI' | 'ANTHROPIC';
+
+interface Props {
+  onBack?: () => void;
+  onNavigate?: (screen: string, params?: { filter?: string }) => void;
+}
+
+interface Config {
+  aiProvider: Provider;
+  modelName: string;
+  apiKeyOverride?: string; // masked by the server, e.g. "••••abcd"
+  hasApiKey: boolean;
+  isEnabled: boolean;
+  monthlySipBudgetInr?: number;
+  monthlyStockBudgetInr?: number;
+}
+
+const PROVIDERS: { key: Provider; label: string; hint: string; keyUrl: string }[] = [
+  { key: 'ANTHROPIC', label: 'Claude', hint: 'Anthropic API key (starts with sk-ant-)', keyUrl: 'console.anthropic.com' },
+  { key: 'OPENAI', label: 'ChatGPT', hint: 'OpenAI API key (starts with sk-)', keyUrl: 'platform.openai.com/api-keys' },
+  { key: 'GEMINI', label: 'Gemini', hint: 'Google AI Studio API key', keyUrl: 'aistudio.google.com/apikey' },
+  { key: 'OPENROUTER', label: 'OpenRouter', hint: 'One key for many models (starts with sk-or-)', keyUrl: 'openrouter.ai/keys' },
+];
+
+const ACTION_LABEL: Record<string, string> = {
+  BUY: 'Buy', SELL: 'Sell', HOLD: 'Keep holding', SIP: 'Start a monthly SIP', REBALANCE: 'Rebalance', AVOID: 'Avoid',
+  SAVE_MORE: 'Save more', REDUCE_SPENDING: 'Spend less', PAY_DOWN_DEBT: 'Pay off debt',
+  BUILD_EMERGENCY_FUND: 'Build emergency fund', TAX_PLANNING: 'Plan your tax', REVIEW_DATA: 'Fix your data',
+};
+const PRIORITY_COLOR: Record<string, { bg: string; fg: string; label: string }> = {
+  HIGH: { bg: colors.errorContainer, fg: colors.onErrorContainer, label: 'Do first' },
+  MEDIUM: { bg: colors.secondaryContainer, fg: colors.onSecondaryContainer, label: 'Soon' },
+  LOW: { bg: colors.surfaceContainer, fg: colors.onSurfaceVariant, label: 'Later' },
+};
+const SEVERITY: Record<string, { icon: any; color: string }> = {
+  positive: { icon: 'check-circle', color: colors.primaryContainer },
+  info: { icon: 'info', color: colors.tertiaryContainer },
+  warning: { icon: 'warning', color: '#b45309' },
+  critical: { icon: 'error', color: colors.error },
+};
+
+const rupees = (v?: number) => `₹${Math.round(v || 0).toLocaleString('en-IN')}`;
+const scoreLabel = (s: number) => (s >= 75 ? 'Healthy' : s >= 50 ? 'Needs some care' : 'Needs attention');
+const scoreColor = (s: number) => (s >= 75 ? colors.primaryContainer : s >= 50 ? '#b45309' : colors.error);
+
+export const AIAdvisorScreen: React.FC<Props> = ({ onBack, onNavigate }) => {
   const insets = useSafeAreaInsets();
+  const [view, setView] = useState<'report' | 'settings'>('report');
+  const [config, setConfig] = useState<Config | null>(null);
+  const [models, setModels] = useState<Record<string, { id: string; name: string }[]>>({});
+  const [report, setReport] = useState<any>(null);   // the ai_advisor_reports row
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // settings form
+  const [provider, setProvider] = useState<Provider>('ANTHROPIC');
+  const [model, setModel] = useState('');
+  const [apiKey, setApiKey] = useState('');          // only set when the user types a new key
+  const [clearKey, setClearKey] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [sipBudget, setSipBudget] = useState('');
+  const [stockBudget, setStockBudget] = useState('');
+  const [enabled, setEnabled] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const stopPolling = () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  useEffect(() => stopPolling, []);
+
+  const applyConfig = (c: Config) => {
+    setConfig(c);
+    setProvider(c.aiProvider);
+    setModel(c.modelName);
+    setEnabled(c.isEnabled);
+    setSipBudget(c.monthlySipBudgetInr ? String(c.monthlySipBudgetInr) : '');
+    setStockBudget(c.monthlyStockBudgetInr ? String(c.monthlyStockBudgetInr) : '');
+    setApiKey('');
+    setClearKey(false);
+  };
+
+  const loadLatest = useCallback(async () => {
+    const res = await apiClient.get('/api/ai-advisor/reports/latest');
+    setReport(res?.data || null);
+  }, []);
+
+  const watchRun = useCallback((runId: string) => {
+    stopPolling();
+    setRunning(true);
+    setRunError(null);
+    const started = Date.now();
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await apiClient.get('/api/ai-advisor/runs?limit=5');
+        const run = (res?.data || []).find((r: any) => r.id === runId);
+        if (run && run.status !== 'RUNNING') {
+          stopPolling();
+          setRunning(false);
+          if (run.status === 'COMPLETED') await loadLatest();
+          else setRunError(run.error_message || 'The analysis did not finish.');
+        } else if (Date.now() - started > 5 * 60 * 1000) {
+          stopPolling();
+          setRunning(false);
+          setRunError('This is taking longer than usual. Pull down to check again in a minute.');
+        }
+      } catch { /* keep polling through brief network blips */ }
+    }, 3000);
+  }, [loadLatest]);
+
+  const init = useCallback(async () => {
+    try {
+      const [cfg, mdl] = await Promise.all([
+        apiClient.get('/api/ai-advisor/config'),
+        apiClient.get('/api/ai-advisor/models'),
+      ]);
+      if (cfg?.data) applyConfig(cfg.data);
+      if (mdl?.data) setModels(mdl.data);
+      await loadLatest();
+      const runs = await apiClient.get('/api/ai-advisor/runs?limit=1');
+      const latestRun = runs?.data?.[0];
+      if (latestRun?.status === 'RUNNING') watchRun(latestRun.id);
+    } catch (e: any) {
+      setRunError(e?.message || 'Could not load the advisor.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [loadLatest, watchRun]);
+
+  useEffect(() => { init(); }, [init]);
+
+  const startAnalysis = async () => {
+    setRunError(null);
+    setRunning(true);
+    try {
+      const res = await apiClient.post('/api/ai-advisor/run', {});
+      if (res?.data?.runId) watchRun(res.data.runId);
+      else setRunning(false);
+    } catch (e: any) {
+      // 409 = one is already in progress: pick it up instead of failing
+      try {
+        const runs = await apiClient.get('/api/ai-advisor/runs?limit=1');
+        if (runs?.data?.[0]?.status === 'RUNNING') { watchRun(runs.data[0].id); return; }
+      } catch {}
+      setRunning(false);
+      setRunError(e?.message || 'Could not start the analysis.');
+    }
+  };
+
+  const saveSettings = async (thenRun = false) => {
+    if (apiKey && apiKey.trim().length < 20) {
+      Alert.alert('Check your key', 'That key looks too short. Copy the full key from your AI provider.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const body: Record<string, any> = {
+        aiProvider: provider,
+        modelName: model || undefined,
+        isEnabled: enabled,
+        monthlySipBudgetInr: sipBudget || undefined,
+        monthlyStockBudgetInr: stockBudget || undefined,
+      };
+      if (clearKey) body.apiKeyOverride = '';
+      else if (apiKey.trim()) body.apiKeyOverride = apiKey.trim();
+      const res = await apiClient.put('/api/ai-advisor/config', body);
+      if (res?.data) applyConfig(res.data);
+      setView('report');
+      if (thenRun) startAnalysis();
+      else Alert.alert('Saved', 'Your AI settings have been updated.');
+    } catch (e: any) {
+      Alert.alert('Could not save', e?.message || 'Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const r = report?.report; // full structured report (schema v2)
+  const providerInfo = PROVIDERS.find((p) => p.key === provider)!;
+  const providerModels = models[provider] || [];
+
+  // ── Settings view ────────────────────────────────────────────────────────────
+  const renderSettings = () => (
+    <ScrollView contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <Text style={styles.stepTitle}>1. Choose your AI</Text>
+      <View style={styles.chipWrap}>
+        {PROVIDERS.map((p) => (
+          <Pressable
+            key={p.key}
+            style={[styles.chip, provider === p.key && styles.chipOn]}
+            onPress={() => { setProvider(p.key); setModel(models[p.key]?.[0]?.id || ''); setApiKey(''); setClearKey(false); }}
+          >
+            <Text style={[styles.chipText, provider === p.key && styles.chipTextOn]}>{p.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {providerModels.length > 0 && (
+        <>
+          <Text style={styles.label}>Model</Text>
+          <View style={styles.chipWrap}>
+            {providerModels.map((m) => (
+              <Pressable key={m.id} style={[styles.chip, model === m.id && styles.chipOn]} onPress={() => setModel(m.id)}>
+                <Text style={[styles.chipText, model === m.id && styles.chipTextOn]}>{m.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      )}
+
+      <Text style={styles.stepTitle}>2. Add your API key</Text>
+      <Text style={styles.help}>{providerInfo.hint}. Get one at {providerInfo.keyUrl}. Your key is stored securely and is never shown in full again.</Text>
+      {config?.hasApiKey && provider === config.aiProvider && !clearKey && !apiKey && (
+        <View style={styles.keyBox}>
+          <MaterialIcons name="vpn-key" size={18} color={colors.primaryContainer} />
+          <Text style={styles.keyBoxText}>Saved key: {config.apiKeyOverride}</Text>
+          <Pressable onPress={() => setClearKey(true)} hitSlop={8}><Text style={styles.removeText}>Remove</Text></Pressable>
+        </View>
+      )}
+      {clearKey && <Text style={[styles.help, { color: colors.error }]}>The saved key will be removed when you save.</Text>}
+      <View style={styles.inputRow}>
+        <TextInput
+          style={styles.input}
+          value={apiKey}
+          onChangeText={setApiKey}
+          placeholder={config?.hasApiKey && provider === config.aiProvider ? 'Paste a new key to replace it' : 'Paste your API key'}
+          placeholderTextColor={colors.outline}
+          secureTextEntry={!showKey}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Pressable onPress={() => setShowKey((v) => !v)} hitSlop={8}>
+          <MaterialIcons name={showKey ? 'visibility-off' : 'visibility'} size={20} color={colors.onSurfaceVariant} />
+        </Pressable>
+      </View>
+
+      <Text style={styles.stepTitle}>3. Your investing budget (optional)</Text>
+      <Text style={styles.help}>Helps the advisor suggest amounts that fit you.</Text>
+      <Text style={styles.label}>Monthly SIP (mutual funds)</Text>
+      <TextInput style={styles.inputSolo} value={sipBudget} onChangeText={(t) => setSipBudget(t.replace(/[^0-9]/g, ''))} keyboardType="number-pad" placeholder="e.g. 10000" placeholderTextColor={colors.outline} />
+      <Text style={styles.label}>Monthly stocks</Text>
+      <TextInput style={styles.inputSolo} value={stockBudget} onChangeText={(t) => setStockBudget(t.replace(/[^0-9]/g, ''))} keyboardType="number-pad" placeholder="e.g. 5000" placeholderTextColor={colors.outline} />
+
+      <View style={styles.switchRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.switchTitle}>Check my finances every day</Text>
+          <Text style={styles.help}>A fresh report and a notification each morning.</Text>
+        </View>
+        <Switch value={enabled} onValueChange={setEnabled} trackColor={{ false: colors.outlineVariant, true: colors.primaryContainer }} thumbColor={colors.onPrimary} />
+      </View>
+
+      <Pressable style={[styles.primaryBtn, saving && { opacity: 0.7 }]} disabled={saving} onPress={() => saveSettings(true)}>
+        {saving ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.primaryBtnText}>Save & check my finances</Text>}
+      </Pressable>
+      <Pressable style={styles.ghostBtn} disabled={saving} onPress={() => saveSettings(false)}>
+        <Text style={styles.ghostBtnText}>Save only</Text>
+      </Pressable>
+      <View style={{ height: 40 }} />
+    </ScrollView>
+  );
+
+  // ── Report view ──────────────────────────────────────────────────────────────
+  const renderReport = () => (
+    <ScrollView
+      contentContainerStyle={styles.pad}
+      showsVerticalScrollIndicator={false}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); init(); }} tintColor={colors.primary} />}
+    >
+      {/* Run card */}
+      <View style={styles.runCard}>
+        <View style={styles.runIcon}><MaterialIcons name="auto-awesome" size={26} color={colors.primaryFixed} /></View>
+        <Text style={styles.runTitle}>{r ? 'Your money check-up' : 'Get your money check-up'}</Text>
+        <Text style={styles.runDesc}>
+          {running
+            ? 'Looking at your accounts, spending and investments. This usually takes under a minute.'
+            : r
+              ? `Last checked ${new Date(report.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`
+              : 'The advisor studies your accounts, spending and investments, then tells you what is going well and what to do next.'}
+        </Text>
+        <Pressable style={[styles.runBtn, running && { opacity: 0.8 }]} disabled={running} onPress={startAnalysis}>
+          {running ? <ActivityIndicator color={colors.primary} /> : (
+            <>
+              <MaterialIcons name="refresh" size={18} color={colors.primary} />
+              <Text style={styles.runBtnText}>{r ? 'Check again' : 'Check my finances'}</Text>
+            </>
+          )}
+        </Pressable>
+        {!config?.hasApiKey && !running && (
+          <Pressable onPress={() => setView('settings')}>
+            <Text style={styles.runHint}>No API key added yet — tap to add yours</Text>
+          </Pressable>
+        )}
+      </View>
+
+      {runError && (
+        <View style={styles.errorBox}>
+          <MaterialIcons name="error-outline" size={20} color={colors.onErrorContainer} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.errorTitle}>We couldn't finish the check-up</Text>
+            <Text style={styles.errorText}>{runError}</Text>
+            <Pressable onPress={() => setView('settings')}><Text style={styles.errorLink}>Check AI settings</Text></Pressable>
+          </View>
+        </View>
+      )}
+
+      {r && (
+        <>
+          {/* Score */}
+          <View style={styles.card}>
+            <View style={styles.scoreRow}>
+              <View style={[styles.scoreCircle, { borderColor: scoreColor(r.financialHealthScore) }]}>
+                <Text style={[styles.scoreNum, { color: scoreColor(r.financialHealthScore) }]}>{r.financialHealthScore}</Text>
+                <Text style={styles.scoreOf}>out of 100</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.scoreLabel}>{scoreLabel(r.financialHealthScore)}</Text>
+                <Text style={styles.summary}>{r.summary}</Text>
+              </View>
+            </View>
+            {r.scoreBreakdown && (
+              <View style={styles.breakdown}>
+                {([['cashflow', 'Monthly cash'], ['liquidity', 'Ready cash'], ['debt', 'Loans'], ['investments', 'Investments']] as const).map(([k, label]) => (
+                  <View key={k} style={styles.barRow}>
+                    <Text style={styles.barLabel}>{label}</Text>
+                    <View style={styles.barTrack}>
+                      <View style={[styles.barFill, { width: `${r.scoreBreakdown[k]}%`, backgroundColor: scoreColor(r.scoreBreakdown[k]) }]} />
+                    </View>
+                    <Text style={styles.barNum}>{r.scoreBreakdown[k]}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* Insights */}
+          <Text style={styles.sectionTitle}>What we found</Text>
+          <View style={styles.card}>
+            {(r.keyInsights || []).map((i: any, idx: number) => {
+              const sev = SEVERITY[i.severity] || SEVERITY.info;
+              return (
+                <View key={idx} style={[styles.insight, idx > 0 && styles.insightBorder]}>
+                  <MaterialIcons name={sev.icon} size={22} color={sev.color} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.insightTitle}>{i.title}</Text>
+                    <Text style={styles.insightDetail}>{i.detail}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          {/* Suggestions */}
+          {(r.recommendations || []).length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>What you can do</Text>
+              {r.recommendations.map((rec: any, idx: number) => {
+                const pr = PRIORITY_COLOR[rec.priority] || PRIORITY_COLOR.LOW;
+                return (
+                  <View key={idx} style={styles.card}>
+                    <View style={styles.recTop}>
+                      <View style={[styles.pill, { backgroundColor: pr.bg }]}><Text style={[styles.pillText, { color: pr.fg }]}>{pr.label}</Text></View>
+                      <Text style={styles.recAction}>{ACTION_LABEL[rec.action] || rec.action}</Text>
+                    </View>
+                    <Text style={styles.recTitle}>{rec.title}</Text>
+                    {!!rec.security && rec.securityType !== 'GENERAL' && <Text style={styles.recSecurity}>{rec.security}</Text>}
+                    <Text style={styles.insightDetail}>{rec.reason}</Text>
+                    {rec.suggestedAmountInr > 0 && <Text style={styles.recAmount}>Suggested: {rupees(rec.suggestedAmountInr)}</Text>}
+                  </View>
+                );
+              })}
+            </>
+          )}
+
+          {/* Investing plan */}
+          {((r.monthlySipPlan || []).length > 0 || (r.monthlyStockPlan || []).length > 0) && (
+            <>
+              <Text style={styles.sectionTitle}>Monthly investing plan</Text>
+              <View style={styles.card}>
+                {(r.monthlySipPlan || []).map((p: any, idx: number) => (
+                  <View key={`s${idx}`} style={styles.planRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.insightTitle}>{p.fund}</Text>
+                      <Text style={styles.insightDetail}>{p.reason}</Text>
+                    </View>
+                    <Text style={styles.planAmt}>{rupees(p.amount)}</Text>
+                  </View>
+                ))}
+                {(r.monthlyStockPlan || []).map((p: any, idx: number) => (
+                  <View key={`k${idx}`} style={styles.planRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.insightTitle}>{p.stock}</Text>
+                      <Text style={styles.insightDetail}>{p.reason}</Text>
+                    </View>
+                    <Text style={styles.planAmt}>{rupees(p.amount)}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+
+          {/* Go deeper */}
+          <View style={styles.linkRow}>
+            <Pressable style={styles.linkBtn} onPress={() => onNavigate && onNavigate('portfolio')}>
+              <MaterialIcons name="show-chart" size={18} color={colors.primary} />
+              <Text style={styles.linkText}>See my investments</Text>
+            </Pressable>
+            <Pressable style={styles.linkBtn} onPress={() => onNavigate && onNavigate('budgets')}>
+              <MaterialIcons name="savings" size={18} color={colors.primary} />
+              <Text style={styles.linkText}>Set a budget</Text>
+            </Pressable>
+          </View>
+
+          {(r.dataCaveats || []).length > 0 && (
+            <View style={styles.caveat}>
+              <Text style={styles.caveatTitle}>Things to keep in mind</Text>
+              {r.dataCaveats.map((c: string, i: number) => <Text key={i} style={styles.caveatText}>• {c}</Text>)}
+            </View>
+          )}
+          <Text style={styles.disclaimer}>
+            This is AI-generated guidance based on your data, not professional financial advice. Check important decisions with a qualified advisor.
+          </Text>
+        </>
+      )}
+      <View style={{ height: 40 }} />
+    </ScrollView>
+  );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Top Header */}
-      <View style={styles.headerContainer}>
-        <View style={styles.appBar}>
-          <View style={styles.appBarLeft}>
-            <View style={styles.avatarContainer}>
-              <Image 
-                source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCAvrlCIqHJ0HX682Qwp6C7IFUbPcF95wzYBfA_EqC3m3oNIfcN-zHIpV_MDTGg_ptB_pd1IfdmyemWJmNq9RcqKG8k3HMBi1rOgxfAP7X5KU8wDjSkS76nhvgHpKFNEG0X9G5rdQl3hZ_jq4NLpnmi0ISvxaaHvRFq7RgkjzHeg6VuvED7-LzagiAzckv4cxaLj0UIyjH_6MO__Isww41ary-2c7Dojotp4wcA2LJUdNsGO9o_oP8JRg' }}
-                style={styles.avatar}
-              />
-            </View>
-            <Text style={styles.appBarTitle}>PFinanc</Text>
-          </View>
-          <View style={styles.appBarRight}>
-            <Pressable style={styles.iconBtn} onPress={() => comingSoon('Visibility')}>
-              <MaterialIcons name="visibility" size={20} color={colors.primary} />
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.pageContext}>
-          <View>
-            <View style={styles.pageTitleRow}>
-              <Text style={styles.pageTitle}>AI Advisor</Text>
-              <View style={styles.intelligenceBadge}>
-                <Text style={styles.intelligenceBadgeText}>Intelligence</Text>
-              </View>
-            </View>
-            <Text style={styles.pageSubtitle}>Ask questions about your finances</Text>
-          </View>
-          <View style={styles.contextActions}>
-            <Pressable style={styles.contextActionBtn} onPress={() => comingSoon('Add comment')}>
-              <MaterialIcons name="add-comment" size={19} color={colors.onSurfaceVariant} />
-            </Pressable>
-            <Pressable style={styles.contextActionBtn} onPress={() => comingSoon('History')}>
-              <MaterialIcons name="history" size={19} color={colors.onSurfaceVariant} />
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.scopeContext}>
-          <View style={styles.scopePill}>
-            <View style={styles.scopeDot} />
-            <Text style={styles.scopeText}>Analyzing Vasoya Family Finances</Text>
-            <MaterialIcons name="expand-more" size={15} color={colors.onSurfaceVariant} />
-          </View>
-        </View>
+    <KeyboardAvoidingView style={[styles.container, { paddingTop: insets.top }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.header}>
+        <Pressable onPress={view === 'settings' ? () => setView('report') : onBack} style={styles.headerBtn} hitSlop={8}>
+          <MaterialIcons name="arrow-back" size={22} color={colors.primary} />
+        </Pressable>
+        <Text style={styles.headerTitle}>{view === 'settings' ? 'AI settings' : 'AI Advisor'}</Text>
+        {view === 'report' ? (
+          <Pressable onPress={() => setView('settings')} style={styles.headerBtn} hitSlop={8} accessibilityLabel="AI settings">
+            <MaterialIcons name="settings" size={22} color={colors.primary} />
+          </Pressable>
+        ) : <View style={styles.headerBtn} />}
       </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        
-        {/* Suggestion Cards Carousel */}
-        <View style={styles.suggestionsSection}>
-          <View style={styles.suggestionsHeader}>
-            <Text style={styles.suggestionsTitle}>SUGGESTED INQUIRIES</Text>
-            <Text style={styles.suggestionsSubtitle}>Tailored to October</Text>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContainer}>
-            <Pressable style={styles.suggestionCard} onPress={() => go('budgets')}>
-              <View style={styles.suggestionCardTitleRow}>
-                <MaterialIcons name="analytics" size={17} color={colors.surfaceTint} />
-                <Text style={[styles.suggestionCardTitle, { color: colors.primary }]}>Monthly Drift</Text>
-              </View>
-              <Text style={styles.suggestionCardDesc} numberOfLines={2}>“Where did I spend the most this month?”</Text>
-            </Pressable>
-            <Pressable style={styles.suggestionCard} onPress={() => go('history', { filter: 'Expenses' })}>
-              <View style={styles.suggestionCardTitleRow}>
-                <MaterialIcons name="trending-up" size={17} color={colors.secondary} />
-                <Text style={[styles.suggestionCardTitle, { color: colors.secondary }]}>Expense Surge</Text>
-              </View>
-              <Text style={styles.suggestionCardDesc} numberOfLines={2}>“Why did my expenses increase?”</Text>
-            </Pressable>
-            <Pressable style={styles.suggestionCard} onPress={() => go('portfolio')}>
-              <View style={styles.suggestionCardTitleRow}>
-                <MaterialIcons name="pie-chart" size={17} color={colors.tertiary} />
-                <Text style={[styles.suggestionCardTitle, { color: colors.tertiary }]}>Portfolio</Text>
-              </View>
-              <Text style={styles.suggestionCardDesc} numberOfLines={2}>“Explain my investment allocation”</Text>
-            </Pressable>
-            <Pressable style={styles.suggestionCard} onPress={() => go('vaultIntro')}>
-              <View style={styles.suggestionCardTitleRow}>
-                <MaterialIcons name="family-restroom" size={17} color={colors.primary} />
-                <Text style={[styles.suggestionCardTitle, { color: colors.primary }]}>Family Vault</Text>
-              </View>
-              <Text style={styles.suggestionCardDesc} numberOfLines={2}>“How much did we save as a family?”</Text>
-            </Pressable>
-          </ScrollView>
-        </View>
-
-        {/* Chat Stream */}
-        <View style={styles.chatSection}>
-          <View style={styles.chatTimeSeparator}>
-            <Text style={styles.chatTimeText}>Today • 10:42 AM</Text>
-          </View>
-
-          {/* User Bubble */}
-          <View style={styles.userBubbleContainer}>
-            <View style={styles.userBubble}>
-              <Text style={styles.userBubbleText}>
-                Why is my food spending higher this month compared to September?
-              </Text>
-              <View style={styles.userBubbleMeta}>
-                <Text style={styles.userBubbleTime}>10:42 AM</Text>
-                <MaterialIcons name="done-all" size={14} color={colors.onPrimaryContainer} />
-              </View>
-            </View>
-          </View>
-
-          {/* AI Response Bubble */}
-          <View style={styles.aiBubbleContainer}>
-            <View style={styles.aiAvatar}>
-              <MaterialIcons name="auto-awesome" size={18} color={colors.primaryFixed} />
-            </View>
-            <View style={styles.aiBubble}>
-              <View>
-                <View style={styles.aiSummaryTitleRow}>
-                  <View style={styles.aiSummaryDot} />
-                  <Text style={styles.aiSummaryTitle}>Category Variance Analysis</Text>
-                </View>
-                <Text style={styles.aiSummaryText}>
-                  Your food & dining expenses increased by <Text style={styles.errorBold}>₹4,850</Text> (<Text style={styles.errorBold}>+26%</Text>) in October across the Vasoya Family.
-                </Text>
-              </View>
-
-              <View style={styles.breakdownWidget}>
-                <View style={styles.breakdownHeader}>
-                  <Text style={styles.breakdownHeaderCol}>SUB-CATEGORY</Text>
-                  <Text style={styles.breakdownHeaderCol}>AMOUNT • VARIANCE</Text>
-                </View>
-                
-                {/* Deliveries */}
-                <View style={styles.breakdownItem}>
-                  <View style={styles.breakdownItemHeader}>
-                    <View style={styles.breakdownItemHeaderLeft}>
-                      <MaterialIcons name="delivery-dining" size={16} color={colors.onSurfaceVariant} />
-                      <Text style={styles.breakdownItemTitle}>Swiggy / Zomato deliveries</Text>
-                    </View>
-                    <Text style={styles.breakdownItemValue}>₹8,420 <Text style={styles.breakdownItemVarError}>(+34%)</Text></Text>
-                  </View>
-                  <View style={styles.breakdownBarTrack}>
-                    <View style={[styles.breakdownBarFill, { width: '72%', backgroundColor: colors.primaryContainer }]} />
-                  </View>
-                </View>
-                
-                {/* Groceries */}
-                <View style={styles.breakdownItem}>
-                  <View style={styles.breakdownItemHeader}>
-                    <View style={styles.breakdownItemHeaderLeft}>
-                      <MaterialIcons name="shopping-basket" size={16} color={colors.onSurfaceVariant} />
-                      <Text style={styles.breakdownItemTitle}>Supermarket (Nature's Basket)</Text>
-                    </View>
-                    <Text style={styles.breakdownItemValue}>₹12,100 <Text style={styles.breakdownItemVarNormal}>(+12%)</Text></Text>
-                  </View>
-                  <View style={styles.breakdownBarTrack}>
-                    <View style={[styles.breakdownBarFill, { width: '55%', backgroundColor: colors.surfaceTint }]} />
-                  </View>
-                </View>
-                
-                {/* Cafes */}
-                <View style={styles.breakdownItem}>
-                  <View style={styles.breakdownItemHeader}>
-                    <View style={styles.breakdownItemHeaderLeft}>
-                      <MaterialIcons name="local-cafe" size={16} color={colors.onSurfaceVariant} />
-                      <Text style={styles.breakdownItemTitle}>Cafes & Dining Out</Text>
-                    </View>
-                    <Text style={styles.breakdownItemValue}>₹3,150 <Text style={styles.breakdownItemVarError}>(+40%)</Text></Text>
-                  </View>
-                  <View style={styles.breakdownBarTrack}>
-                    <View style={[styles.breakdownBarFill, { width: '40%', backgroundColor: colors.secondary }]} />
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.insightBox}>
-                <MaterialIcons name="lightbulb" size={20} color={colors.secondary} style={{marginTop: 2}} />
-                <Text style={styles.insightText}>
-                  <Text style={styles.insightTextBold}>Weekend dining</Text> contributed 62% of this variance. 3 transactions from Oct 18 festival weekend were the primary driver.
-                </Text>
-              </View>
-
-              <View style={styles.chatActionBtns}>
-                <Pressable style={styles.chatPrimaryBtn} onPress={() => go('history', { filter: 'Expenses' })}>
-                  <Text style={styles.chatPrimaryBtnText}>View Food Transactions (14)</Text>
-                  <MaterialIcons name="arrow-forward" size={16} color={colors.onPrimary} />
-                </Pressable>
-                <Pressable style={styles.chatSecondaryBtn} onPress={() => go('budgets')}>
-                  <MaterialIcons name="alarm" size={16} color={colors.surfaceTint} />
-                  <Text style={styles.chatSecondaryBtnText}>Set Dining Budget Alert</Text>
-                </Pressable>
-              </View>
-
-              <View style={styles.feedbackRow}>
-                <Text style={styles.feedbackLabel}>Accurate for your family?</Text>
-                <View style={styles.feedbackIcons}>
-                  <Pressable style={styles.feedbackIconBtn}><MaterialIcons name="thumb-up" size={16} color={colors.outline} /></Pressable>
-                  <Pressable style={styles.feedbackIconBtn}><MaterialIcons name="thumb-down" size={16} color={colors.outline} /></Pressable>
-                  <Pressable style={styles.feedbackIconBtn}><MaterialIcons name="share" size={16} color={colors.outline} /></Pressable>
-                </View>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Proactive Discoveries */}
-        <View style={styles.discoveriesSection}>
-          <View style={styles.discoveriesHeader}>
-            <View style={styles.discoveriesHeaderLeft}>
-              <MaterialIcons name="tips-and-updates" size={18} color={colors.surfaceTint} />
-              <Text style={styles.discoveriesTitle}>Proactive Discoveries</Text>
-            </View>
-            <Text style={styles.discoveriesCount}>2 action items</Text>
-          </View>
-
-          {/* Card 1 */}
-          <View style={styles.discoveryCard}>
-            <View style={styles.discoveryCardHeader}>
-              <View style={styles.discoveryCardHeaderLeft}>
-                <View style={styles.discoveryDot} />
-                <Text style={styles.discoveryCardTitle}>Detected Recurring Subscriptions</Text>
-              </View>
-              <MaterialIcons name="autorenew" size={20} color={colors.outline} />
-            </View>
-            <Text style={styles.discoveryCardDesc}>Review active automated mandates detected from your HDFC & ICICI accounts.</Text>
-
-            <View style={styles.discoveryChips}>
-              <View style={styles.discoveryChip}>
-                <View style={[styles.chipDot, { backgroundColor: colors.error }]} />
-                <Text style={styles.chipName}>Netflix</Text>
-                <Text style={styles.chipValue}>₹649/mo</Text>
-              </View>
-              <View style={styles.discoveryChip}>
-                <View style={[styles.chipDot, { backgroundColor: colors.surfaceTint }]} />
-                <Text style={styles.chipName}>Amazon Prime</Text>
-                <Text style={styles.chipValue}>₹1,499/yr</Text>
-              </View>
-              <View style={styles.discoveryChip}>
-                <View style={[styles.chipDot, { backgroundColor: colors.tertiary }]} />
-                <Text style={styles.chipName}>Hotstar</Text>
-                <Text style={styles.chipValue}>₹899/yr</Text>
-              </View>
-            </View>
-
-            <View style={styles.discoveryFooter}>
-              <Text style={styles.discoveryFooterMeta}>Annual Outflow: ₹10,186</Text>
-              <Pressable style={styles.discoveryFooterBtn} onPress={() => go('portfolio')}>
-                <Text style={styles.discoveryFooterBtnText}>Manage Mandates</Text>
-                <MaterialIcons name="chevron-right" size={15} color={colors.primaryContainer} />
-              </Pressable>
-            </View>
-          </View>
-
-          {/* Card 2 */}
-          <View style={styles.discoveryActionCard}>
-            <View style={styles.discoveryActionLeft}>
-              <View style={styles.discoveryActionIcon}>
-                <MaterialIcons name="rule" size={22} color={colors.secondary} />
-              </View>
-              <View>
-                <Text style={styles.discoveryActionTitle}>Review Uncategorized</Text>
-                <Text style={styles.discoveryActionDesc}>3 transactions need family allocation</Text>
-              </View>
-            </View>
-            <Pressable style={styles.discoveryActionBtn} onPress={() => go('imports')}>
-              <Text style={styles.discoveryActionBtnText}>Review</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        {/* Bottom padding for Input and Nav */}
-        <View style={{ height: 160 }} />
-      </ScrollView>
-
-      {/* Sticky Bottom Chat Input Bar */}
-      <View style={styles.inputContainer}>
-        <View style={styles.inputBox}>
-          <Pressable style={styles.inputIconBtn} onPress={() => comingSoon('Attach file')}>
-            <MaterialIcons name="attach-file" size={20} color={colors.onSurfaceVariant} />
-          </Pressable>
-          <TextInput 
-            style={styles.textInput}
-            placeholder="Ask anything about your money..."
-            placeholderTextColor={colors.outline}
-          />
-          <Pressable style={styles.inputIconBtn} onPress={() => comingSoon('Mic')}>
-            <MaterialIcons name="mic" size={20} color={colors.onSurfaceVariant} />
-          </Pressable>
-          <Pressable style={styles.sendBtn} onPress={() => comingSoon('Arrow upward')}>
-            <MaterialIcons name="arrow-upward" size={18} color={colors.onPrimary} />
-          </Pressable>
-        </View>
-      </View>
-    </View>
+      {loading ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color={colors.primary} /></View>
+      ) : view === 'settings' ? renderSettings() : renderReport()}
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  headerContainer: {
-    backgroundColor: 'rgba(244, 251, 247, 0.95)',
-    zIndex: 40,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(193, 200, 194, 0.2)',
-  },
-  appBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
-  appBarLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  avatarContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: colors.primaryFixed,
-    overflow: 'hidden',
-    backgroundColor: colors.surfaceContainer,
-  },
-  avatar: {
-    width: '100%',
-    height: '100%',
-  },
-  appBarTitle: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 20,
-    color: colors.primary,
-  },
-  appBarRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surfaceContainerLow,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pageContext: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-  },
-  pageTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  pageTitle: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 24,
-    color: colors.primary,
-    letterSpacing: -0.5,
-  },
-  intelligenceBadge: {
-    backgroundColor: colors.primaryFixed,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-  },
-  intelligenceBadgeText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 11,
-    color: colors.onPrimaryFixed,
-  },
-  pageSubtitle: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    color: colors.onSurfaceVariant,
-    marginTop: 2,
-  },
-  contextActions: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  contextActionBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scopeContext: {
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-  },
-  scopePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.surfaceContainerLow,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.4)',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    alignSelf: 'flex-start',
-  },
-  scopeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.surfaceTint,
-  },
-  scopeText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 12,
-    color: colors.onSurface,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 20,
-    gap: 20,
-  },
-  suggestionsSection: {
-    gap: 8,
-  },
-  suggestionsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  suggestionsTitle: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 10,
-    color: colors.outline,
-    letterSpacing: 0.5,
-  },
-  suggestionsSubtitle: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 10,
-    color: colors.surfaceTint,
-  },
-  carouselContainer: {
-    gap: 10,
-    paddingVertical: 4,
-  },
-  suggestionCard: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.4)',
-    borderRadius: 12,
-    padding: 12,
-    width: 160,
-    shadowColor: 'rgba(13, 56, 41, 0.05)',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 20,
-    elevation: 2,
-  },
-  suggestionCardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  suggestionCardTitle: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 11,
-  },
-  suggestionCardDesc: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    color: colors.onSurfaceVariant,
-    lineHeight: 18,
-  },
-  chatSection: {
-    gap: 16,
-  },
-  chatTimeSeparator: {
-    alignItems: 'center',
-    marginVertical: 8,
-  },
-  chatTimeText: {
-    backgroundColor: colors.surfaceContainerHigh,
-    color: colors.onSurfaceVariant,
-    paddingHorizontal: 12,
-    paddingVertical: 2,
-    borderRadius: 12,
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 11,
-  },
-  userBubbleContainer: {
-    alignItems: 'flex-end',
-  },
-  userBubble: {
-    maxWidth: '85%',
-    backgroundColor: colors.primaryContainer,
-    borderRadius: 16,
-    borderBottomRightRadius: 4,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  userBubbleText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 14,
-    color: colors.onPrimary,
-    lineHeight: 20,
-  },
-  userBubbleMeta: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
-  },
-  userBubbleTime: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 10,
-    color: colors.onPrimaryContainer,
-  },
-  aiBubbleContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  aiAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  aiBubble: {
-    flex: 1,
-    backgroundColor: colors.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.3)',
-    borderRadius: 16,
-    borderTopLeftRadius: 4,
-    padding: 16,
-    shadowColor: 'rgba(11, 17, 15, 0.06)',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 24,
-    elevation: 4,
-    gap: 14,
-  },
-  aiSummaryTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
-  },
-  aiSummaryDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.surfaceTint,
-  },
-  aiSummaryTitle: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 11,
-    color: colors.surfaceTint,
-  },
-  aiSummaryText: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    color: colors.onSurface,
-    lineHeight: 20,
-  },
-  errorBold: {
-    fontFamily: 'Inter_600SemiBold',
-    color: colors.error,
-  },
-  breakdownWidget: {
-    backgroundColor: colors.surfaceContainerLow,
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.2)',
-    gap: 10,
-  },
-  breakdownHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  breakdownHeaderCol: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 10,
-    color: colors.onSurfaceVariant,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  breakdownItem: {
-    gap: 4,
-  },
-  breakdownItemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  breakdownItemHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  breakdownItemTitle: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 13,
-    color: colors.onSurface,
-  },
-  breakdownItemValue: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 13,
-    color: colors.onSurface,
-  },
-  breakdownItemVarError: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 12,
-    color: colors.error,
-  },
-  breakdownItemVarNormal: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 12,
-    color: colors.onSurfaceVariant,
-  },
-  breakdownBarTrack: {
-    height: 6,
-    backgroundColor: colors.surfaceContainer,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  breakdownBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  insightBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    backgroundColor: 'rgba(255, 222, 164, 0.3)', // secondary-fixed/30
-    borderWidth: 1,
-    borderColor: 'rgba(229, 194, 129, 0.4)',
-    borderRadius: 12,
-    padding: 12,
-  },
-  insightText: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    color: colors.onSurface,
-    lineHeight: 18,
-    flex: 1,
-  },
-  insightTextBold: {
-    fontFamily: 'Inter_600SemiBold',
-    color: colors.onSurface,
-  },
-  chatActionBtns: {
-    gap: 8,
-  },
-  chatPrimaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: colors.primaryContainer,
-    borderRadius: 12,
-    paddingVertical: 10,
-  },
-  chatPrimaryBtnText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 12,
-    color: colors.onPrimary,
-  },
-  chatSecondaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: colors.surfaceContainer,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.4)',
-    borderRadius: 12,
-    paddingVertical: 10,
-  },
-  chatSecondaryBtnText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 12,
-    color: colors.onSurface,
-  },
-  feedbackRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(193, 200, 194, 0.1)',
-  },
-  feedbackLabel: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 10,
-    color: colors.outline,
-  },
-  feedbackIcons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  feedbackIconBtn: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  discoveriesSection: {
-    gap: 12,
-    paddingTop: 8,
-  },
-  discoveriesHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  discoveriesHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  discoveriesTitle: {
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 18,
-    color: colors.primary,
-  },
-  discoveriesCount: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 11,
-    color: colors.surfaceTint,
-  },
-  discoveryCard: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.3)',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: 'rgba(13, 56, 41, 0.05)',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 20,
-    elevation: 2,
-  },
-  discoveryCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  discoveryCardHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  discoveryDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.secondary,
-  },
-  discoveryCardTitle: {
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 16,
-    color: colors.onSurface,
-  },
-  discoveryCardDesc: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    color: colors.onSurfaceVariant,
-    marginTop: 4,
-  },
-  discoveryChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 12,
-  },
-  discoveryChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.surfaceContainerLow,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.2)',
-  },
-  chipDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  chipName: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 11,
-    color: colors.onSurface,
-  },
-  chipValue: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 11,
-    color: colors.primary,
-  },
-  discoveryFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 14,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(193, 200, 194, 0.2)',
-  },
-  discoveryFooterMeta: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 10,
-    color: colors.onSurfaceVariant,
-  },
-  discoveryFooterBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  discoveryFooterBtnText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 12,
-    color: colors.primaryContainer,
-  },
-  discoveryActionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.3)',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: 'rgba(13, 56, 41, 0.05)',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 20,
-    elevation: 2,
-  },
-  discoveryActionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  discoveryActionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 222, 164, 0.5)', // secondary-fixed/50
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  discoveryActionTitle: {
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 15,
-    color: colors.onSurface,
-  },
-  discoveryActionDesc: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    color: colors.onSurfaceVariant,
-  },
-  discoveryActionBtn: {
-    backgroundColor: colors.surfaceContainerHigh,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  discoveryActionBtnText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 12,
-    color: colors.onSurface,
-  },
-  inputContainer: {
-    position: 'absolute',
-    bottom: 84, // above bottom nav
-    left: 0,
-    right: 0,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    // Add gradient conceptually using bg color
-    backgroundColor: 'rgba(244, 251, 247, 0.95)',
-  },
-  inputBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: 'rgba(193, 200, 194, 0.4)',
-    borderRadius: 24,
-    padding: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  inputIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  textInput: {
-    flex: 1,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    color: colors.onSurface,
-    paddingHorizontal: 8,
-  },
-  sendBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
+  container: { flex: 1, backgroundColor: colors.surface },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
+  headerBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceContainerLow },
+  headerTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 20, color: colors.primary },
+  pad: { paddingHorizontal: 20, paddingBottom: 40, gap: 14 },
+  // run card
+  runCard: { backgroundColor: colors.primaryContainer, borderRadius: 24, padding: 22, alignItems: 'center', gap: 8 },
+  runIcon: { width: 52, height: 52, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
+  runTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 20, color: colors.onPrimary },
+  runDesc: { fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.onPrimaryContainer, textAlign: 'center' },
+  runBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, paddingHorizontal: 22, height: 48, borderRadius: 14, backgroundColor: colors.primaryFixed, minWidth: 180, justifyContent: 'center' },
+  runBtnText: { fontFamily: 'Inter_700Bold', fontSize: 15, color: colors.primary },
+  runHint: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: colors.primaryFixed, marginTop: 6, textDecorationLine: 'underline' },
+  errorBox: { flexDirection: 'row', gap: 10, padding: 14, borderRadius: 16, backgroundColor: colors.errorContainer },
+  errorTitle: { fontFamily: 'Inter_700Bold', fontSize: 14, color: colors.onErrorContainer },
+  errorText: { fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.onErrorContainer, marginTop: 2 },
+  errorLink: { fontFamily: 'Inter_700Bold', fontSize: 13, color: colors.onErrorContainer, marginTop: 8, textDecorationLine: 'underline' },
+  // report cards
+  card: { backgroundColor: colors.surfaceContainerLowest, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: 'rgba(193,200,194,0.4)' },
+  scoreRow: { flexDirection: 'row', gap: 16, alignItems: 'center' },
+  scoreCircle: { width: 96, height: 96, borderRadius: 48, borderWidth: 6, alignItems: 'center', justifyContent: 'center' },
+  scoreNum: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 32 },
+  scoreOf: { fontFamily: 'Inter_500Medium', fontSize: 10, color: colors.onSurfaceVariant },
+  scoreLabel: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 18, color: colors.onSurface },
+  summary: { fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.onSurfaceVariant, marginTop: 4, lineHeight: 19 },
+  breakdown: { marginTop: 16, gap: 10 },
+  barRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  barLabel: { width: 88, fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.onSurfaceVariant },
+  barTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.surfaceContainerHigh, overflow: 'hidden' },
+  barFill: { height: '100%', borderRadius: 4 },
+  barNum: { width: 28, textAlign: 'right', fontFamily: 'Inter_700Bold', fontSize: 12, color: colors.onSurface },
+  sectionTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 18, color: colors.onSurface, marginTop: 8 },
+  insight: { flexDirection: 'row', gap: 12, paddingVertical: 12 },
+  insightBorder: { borderTopWidth: 1, borderTopColor: 'rgba(193,200,194,0.3)' },
+  insightTitle: { fontFamily: 'Inter_700Bold', fontSize: 14, color: colors.onSurface },
+  insightDetail: { fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.onSurfaceVariant, marginTop: 2, lineHeight: 19 },
+  recTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  pill: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
+  pillText: { fontFamily: 'Inter_700Bold', fontSize: 11 },
+  recAction: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: colors.onSurfaceVariant },
+  recTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, color: colors.onSurface },
+  recSecurity: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: colors.primaryContainer, marginTop: 2 },
+  recAmount: { fontFamily: 'Inter_700Bold', fontSize: 14, color: colors.primaryContainer, marginTop: 8 },
+  planRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
+  planAmt: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, color: colors.primary },
+  linkRow: { flexDirection: 'row', gap: 10 },
+  linkBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: 14, backgroundColor: colors.surfaceContainer },
+  linkText: { fontFamily: 'Inter_700Bold', fontSize: 13, color: colors.primary },
+  caveat: { padding: 14, borderRadius: 14, backgroundColor: colors.secondaryContainer, gap: 4 },
+  caveatTitle: { fontFamily: 'Inter_700Bold', fontSize: 13, color: colors.onSecondaryContainer },
+  caveatText: { fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.onSecondaryContainer },
+  disclaimer: { fontFamily: 'Inter_500Medium', fontSize: 11, color: colors.outline, textAlign: 'center' },
+  // settings
+  stepTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 17, color: colors.onSurface, marginTop: 10 },
+  label: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.onSurfaceVariant, marginTop: 4 },
+  help: { fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.onSurfaceVariant, lineHeight: 18 },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999, backgroundColor: colors.surfaceContainer },
+  chipOn: { backgroundColor: colors.primaryContainer },
+  chipText: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.onSurface },
+  chipTextOn: { color: colors.onPrimary },
+  keyBox: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, backgroundColor: colors.primaryFixed },
+  keyBoxText: { flex: 1, fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.onPrimaryFixed },
+  removeText: { fontFamily: 'Inter_700Bold', fontSize: 13, color: colors.error },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 52, paddingHorizontal: 14, borderRadius: 14, backgroundColor: colors.surfaceContainerLow, borderWidth: 1, borderColor: colors.outlineVariant },
+  input: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 14, color: colors.onSurface },
+  inputSolo: { height: 50, paddingHorizontal: 14, borderRadius: 14, backgroundColor: colors.surfaceContainerLow, borderWidth: 1, borderColor: colors.outlineVariant, fontFamily: 'Inter_500Medium', fontSize: 15, color: colors.onSurface },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
+  switchTitle: { fontFamily: 'Inter_700Bold', fontSize: 14, color: colors.onSurface },
+  primaryBtn: { height: 54, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryContainer, marginTop: 12 },
+  primaryBtnText: { fontFamily: 'Inter_700Bold', fontSize: 16, color: colors.onPrimary },
+  ghostBtn: { height: 48, alignItems: 'center', justifyContent: 'center' },
+  ghostBtnText: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.primaryContainer },
 });
