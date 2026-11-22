@@ -9,31 +9,30 @@ import { colors } from '../theme/colors';
 import { apiClient } from '../api/client';
 import {
   requestSmsPermission, checkSmsPermission,
-  readBankSMS, buildCandidatesPayload
+  readBankSMS, buildCandidatesPayload, syncSmsCandidates, SyncSummary
 } from '../api/smsService';
 
 interface SMSReviewScreenProps {
   onBack: () => void;
 }
 
+// Flat row as returned by GET /api/automation/candidates (transaction_candidates table)
 interface TransactionCandidate {
   id: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  parsed_data: {
-    amount?: number;
-    merchant?: string;
-    transaction_type?: 'EXPENSE' | 'INCOME' | 'TRANSFER';
-    account_last4?: string;
-    bank_name?: string;
-    confidence?: number;
-    currency?: string;
-    date?: string;
-  };
-  raw_sms_body: string;
-  sender: string;
-  received_at: string;
+  status: string;
+  account_id?: string | null;
+  amount?: number | string | null;
+  currency?: string;
+  direction?: 'DEBIT' | 'CREDIT' | null;
+  transaction_type?: 'EXPENSE' | 'INCOME' | 'FEE' | 'REFUND' | 'TRANSFER' | null;
+  merchant?: string | null;
+  transaction_date?: string | null;
+  reference_number?: string | null;
+  confidence?: number | string | null;
   created_at: string;
 }
+
+interface AccountLite { id: string; name: string; }
 
 type ScreenState = 'permission' | 'scanning' | 'syncing' | 'loaded' | 'empty' | 'error';
 
@@ -44,6 +43,10 @@ export const SMSReviewScreen: React.FC<SMSReviewScreenProps> = ({ onBack }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [smsCount, setSmsCount] = useState(0);
+  const [summary, setSummary] = useState<SyncSummary | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<AccountLite[]>([]);
+  const [pickedAccount, setPickedAccount] = useState<Record<string, string>>({});
 
   useEffect(() => {
     initSMS();
@@ -79,39 +82,42 @@ export const SMSReviewScreen: React.FC<SMSReviewScreenProps> = ({ onBack }) => {
 
   const scanAndSync = async () => {
     setState('scanning');
+    setSyncError(null);
     try {
       const smsList = await readBankSMS(300, 90);
       setSmsCount(smsList.length);
 
-      if (smsList.length === 0) {
-        await loadCandidates();
-        return;
+      if (smsList.length > 0) {
+        setState('syncing');
+        const result = await syncSmsCandidates(buildCandidatesPayload(smsList));
+        setSummary(result);
+        if (result.errors > 0 && result.created === 0) {
+          setSyncError(result.firstError || 'The server could not read your messages.');
+        }
       }
-
-      setState('syncing');
-      const candidates = buildCandidatesPayload(smsList);
-
-      await apiClient.post('/api/automation/candidates/sync', { candidates });
-      await loadCandidates();
     } catch (err: any) {
       console.error('SMS scan error:', err);
-      // Fall back to just loading existing candidates from server
-      await loadCandidates();
+      // Show the real reason instead of silently pretending there is nothing to review
+      setSyncError(err?.message || 'Could not send messages to PFinanc.');
     }
+    await loadCandidates();
   };
 
   const loadCandidates = async () => {
     try {
-      const res = await apiClient.get('/api/automation/candidates');
-      if (res.success) {
-        const pending = (Array.isArray(res.data) ? res.data : []).filter(
-          (c: TransactionCandidate) => c.status === 'PENDING'
-        );
-        setCandidates(pending);
-        setState(pending.length === 0 ? 'empty' : 'loaded');
-      } else {
-        setState('empty');
-      }
+      const [res, accRes] = await Promise.all([
+        apiClient.get('/api/automation/candidates'),
+        apiClient.get('/api/accounts').catch(() => null),
+      ]);
+      // Backend returns a bare array; tolerate a { data } envelope too.
+      const rows: TransactionCandidate[] = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+      const pending = rows.filter((c) => c.status === 'NEEDS_REVIEW' || c.status === 'PENDING');
+      setCandidates(pending);
+
+      const accList = Array.isArray(accRes?.data) ? accRes.data : accRes?.data?.accounts || [];
+      setAccounts(accList.filter((a: any) => a.is_active !== false).map((a: any) => ({ id: a.id, name: a.name })));
+
+      setState(pending.length === 0 ? 'empty' : 'loaded');
     } catch {
       setState('error');
     }
@@ -124,12 +130,18 @@ export const SMSReviewScreen: React.FC<SMSReviewScreenProps> = ({ onBack }) => {
   }, []);
 
   const handleApprove = async (id: string) => {
+    const cand = candidates.find((c) => c.id === id);
+    const accountId = pickedAccount[id] || cand?.account_id;
+    if (!accountId) {
+      Alert.alert('Choose an account', 'We could not tell which account this belongs to. Tap one of the accounts on the card first.');
+      return;
+    }
     setActionLoading(id + '-approve');
     try {
-      await apiClient.post(`/api/automation/candidates/${id}/approve`, {});
+      await apiClient.post(`/api/automation/candidates/${id}/approve`, { account_id: accountId });
       setCandidates((prev) => prev.filter((c) => c.id !== id));
-    } catch {
-      Alert.alert('Error', 'Could not approve transaction.');
+    } catch (e: any) {
+      Alert.alert('Could not save', e?.message || 'Could not approve this entry. Please try again.');
     } finally {
       setActionLoading(null);
     }
@@ -147,10 +159,10 @@ export const SMSReviewScreen: React.FC<SMSReviewScreenProps> = ({ onBack }) => {
     }
   };
 
-  const formatAmount = (amount?: number, type?: string) => {
-    if (!amount) return '—';
-    const formatted = `₹${amount.toLocaleString('en-IN')}`;
-    return formatted;
+  const formatAmount = (amount?: number | string | null) => {
+    const n = Number(amount);
+    if (!n) return '—';
+    return `₹${n.toLocaleString('en-IN')}`;
   };
 
   const getTypeColor = (type?: string) => {
@@ -185,11 +197,11 @@ export const SMSReviewScreen: React.FC<SMSReviewScreenProps> = ({ onBack }) => {
           </View>
           <Text style={styles.permissionTitle}>Automatic Transaction Detection</Text>
           <Text style={styles.permissionDesc}>
-            PFinanc can read your bank SMS messages to automatically detect and prepare transaction drafts for your review.
+            PFinanc reads your bank SMS messages and prepares drafts for you to review. Nothing is added to your records until you approve it.
           </Text>
           <View style={styles.permissionPoints}>
             {[
-              { icon: 'lock', text: 'All analysis is on-device. No raw SMS is stored.' },
+              { icon: 'lock', text: 'Messages are sent securely to read the amount and shop name. The message text itself is not stored.' },
               { icon: 'filter-list', text: 'Only bank & financial SMS are scanned.' },
               { icon: 'check-circle', text: 'Every transaction requires your approval.' },
             ].map((p, i) => (
@@ -256,13 +268,20 @@ export const SMSReviewScreen: React.FC<SMSReviewScreenProps> = ({ onBack }) => {
       </View>
 
       {/* Info Banner */}
-      {state === 'loaded' && smsCount > 0 && (
+      {(state === 'loaded' || state === 'empty') && smsCount > 0 && (
         <View style={styles.infoBanner}>
           <MaterialIcons name="sms" size={16} color={colors.primaryContainer} />
           <Text style={styles.infoBannerText}>
-            Detected from {smsCount} bank messages · Privacy-First · Local Only
+            Found {smsCount} bank messages{summary ? ` · ${summary.created} new draft${summary.created === 1 ? '' : 's'}` : ''}
           </Text>
         </View>
+      )}
+
+      {syncError && (
+        <Pressable style={styles.infoBanner} onPress={onRefresh}>
+          <MaterialIcons name="error-outline" size={16} color="#BA1A1A" />
+          <Text style={[styles.infoBannerText, { color: '#BA1A1A' }]}>Scan problem: {syncError} Tap to retry.</Text>
+        </Pressable>
       )}
 
       {/* Empty State */}
@@ -279,7 +298,7 @@ export const SMSReviewScreen: React.FC<SMSReviewScreenProps> = ({ onBack }) => {
           <Text style={styles.emptyDesc}>
             {state === 'error'
               ? 'Check your connection and try again.'
-              : 'All transactions have been reviewed. Pull down to scan again.'}
+              : smsCount === 0 && Platform.OS === 'android' ? 'No bank messages found in the last 90 days.' : 'Everything has been reviewed. Tap Scan Again to look for new messages.'}
           </Text>
           <Pressable style={styles.primaryBtn} onPress={onRefresh}>
             <Text style={styles.primaryBtnText}>Scan Again</Text>
@@ -297,8 +316,10 @@ export const SMSReviewScreen: React.FC<SMSReviewScreenProps> = ({ onBack }) => {
           }
         >
           {candidates.map((c) => {
-            const typeStyle = getTypeColor(c.parsed_data?.transaction_type);
-            const conf = c.parsed_data?.confidence;
+            const ttype = c.transaction_type || undefined;
+            const typeStyle = getTypeColor(ttype);
+            const conf = c.confidence != null ? Number(c.confidence) : undefined;
+            const needsAccount = !c.account_id;
             const isApproving = actionLoading === c.id + '-approve';
             const isRejecting = actionLoading === c.id + '-reject';
 
@@ -309,12 +330,12 @@ export const SMSReviewScreen: React.FC<SMSReviewScreenProps> = ({ onBack }) => {
                   <View style={styles.cardHeaderLeft}>
                     <View style={[styles.typeTag, { backgroundColor: typeStyle.bg }]}>
                       <Text style={[styles.typeTagText, { color: typeStyle.text }]}>
-                        {c.parsed_data?.transaction_type || 'UNKNOWN'}
+                        {ttype === 'INCOME' ? 'MONEY IN' : ttype === 'EXPENSE' ? 'MONEY OUT' : ttype || 'UNKNOWN'}
                       </Text>
                     </View>
                     <View style={styles.senderBadge}>
                       <MaterialIcons name="sms" size={12} color={colors.onSurfaceVariant} />
-                      <Text style={styles.senderText}>{c.sender}</Text>
+                      <Text style={styles.senderText}>From SMS</Text>
                     </View>
                   </View>
                   {conf !== undefined && (
@@ -331,40 +352,55 @@ export const SMSReviewScreen: React.FC<SMSReviewScreenProps> = ({ onBack }) => {
                 <View style={styles.amountRow}>
                   <Text style={[
                     styles.amountText,
-                    { color: c.parsed_data?.transaction_type === 'INCOME' ? colors.primary : '#BA1A1A' }
+                    { color: ttype === 'INCOME' || ttype === 'REFUND' ? colors.primary : '#BA1A1A' }
                   ]}>
-                    {c.parsed_data?.transaction_type === 'INCOME' ? '+' : '-'}
-                    {formatAmount(c.parsed_data?.amount)}
+                    {ttype === 'INCOME' || ttype === 'REFUND' ? '+' : '-'}
+                    {formatAmount(c.amount)}
                   </Text>
-                  {c.parsed_data?.bank_name && (
-                    <Text style={styles.bankText}>{c.parsed_data.bank_name}
-                      {c.parsed_data?.account_last4 ? ` ••${c.parsed_data.account_last4}` : ''}
-                    </Text>
-                  )}
                 </View>
 
                 {/* Merchant & Date */}
                 <View style={styles.cardMeta}>
-                  {c.parsed_data?.merchant && (
+                  {!!c.merchant && (
                     <View style={styles.metaRow}>
                       <MaterialIcons name="storefront" size={14} color={colors.onSurfaceVariant} />
-                      <Text style={styles.metaText}>{c.parsed_data.merchant}</Text>
+                      <Text style={styles.metaText}>{c.merchant}</Text>
                     </View>
                   )}
                   <View style={styles.metaRow}>
                     <MaterialIcons name="access-time" size={14} color={colors.onSurfaceVariant} />
                     <Text style={styles.metaText}>
-                      {new Date(c.received_at).toLocaleDateString('en-IN', {
+                      {new Date(c.transaction_date || c.created_at).toLocaleDateString('en-IN', {
                         day: 'numeric', month: 'short', year: 'numeric'
                       })}
                     </Text>
                   </View>
                 </View>
 
-                {/* Raw SMS preview */}
-                <View style={styles.smsBubble}>
-                  <Text style={styles.smsText} numberOfLines={2}>{c.raw_sms_body}</Text>
-                </View>
+                {/* Which account? Only asked when we could not match one from the SMS */}
+                {needsAccount && (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={styles.metaText}>Which account is this from?</Text>
+                    {accounts.length === 0 ? (
+                      <Text style={styles.metaText}>Add an account in More → Accounts first.</Text>
+                    ) : (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 8 }}>
+                        {accounts.map((a) => {
+                          const on = pickedAccount[c.id] === a.id;
+                          return (
+                            <Pressable
+                              key={a.id}
+                              onPress={() => setPickedAccount((p) => ({ ...p, [c.id]: a.id }))}
+                              style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: on ? colors.primaryContainer : colors.surfaceContainer }}
+                            >
+                              <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: on ? colors.onPrimary : colors.onSurface }}>{a.name}</Text>
+                            </Pressable>
+                          );
+                        })}
+                      </ScrollView>
+                    )}
+                  </View>
+                )}
 
                 {/* Action Buttons */}
                 <View style={styles.cardActions}>
@@ -378,7 +414,7 @@ export const SMSReviewScreen: React.FC<SMSReviewScreenProps> = ({ onBack }) => {
                     ) : (
                       <>
                         <MaterialIcons name="check" size={16} color={colors.onPrimary} />
-                        <Text style={styles.approveBtnText}>Approve</Text>
+                        <Text style={styles.approveBtnText}>Add to my records</Text>
                       </>
                     )}
                   </Pressable>
