@@ -8,6 +8,8 @@ import { apiClient } from '../api/client';
 
 interface Props {
   onOpenSettings: () => void;
+  providerLabel?: string;
+  modelName?: string;
 }
 
 interface Msg { id: string; role: 'user' | 'assistant'; content: string; created_at?: string }
@@ -20,7 +22,7 @@ const SUGGESTIONS = [
   'Can I start a ₹5,000 monthly SIP?',
 ];
 
-export const AIChatPanel: React.FC<Props> = ({ onOpenSettings }) => {
+export const AIChatPanel: React.FC<Props> = ({ onOpenSettings, providerLabel, modelName }) => {
   const [mode, setMode] = useState<'chat' | 'history'>('chat');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [title, setTitle] = useState('New chat');
@@ -182,6 +184,14 @@ export const AIChatPanel: React.FC<Props> = ({ onOpenSettings }) => {
         </Pressable>
       </View>
 
+      {!!modelName && (
+        <Pressable style={styles.modelChip} onPress={onOpenSettings}>
+          <MaterialIcons name="memory" size={14} color={colors.primaryContainer} />
+          <Text style={styles.modelChipText} numberOfLines={1}>Chatting with {providerLabel} · {modelName}</Text>
+          <Text style={styles.modelChipLink}>Change</Text>
+        </Pressable>
+      )}
+
       {!sessionId ? (
         <ScrollView contentContainerStyle={styles.intro}>
           <View style={styles.introIcon}><MaterialIcons name="forum" size={30} color={colors.primaryFixed} /></View>
@@ -268,6 +278,9 @@ const styles = StyleSheet.create({
   barBtnText: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.primary },
   newBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, height: 38, borderRadius: 19, backgroundColor: colors.primaryContainer, minWidth: 96, justifyContent: 'center' },
   newBtnText: { fontFamily: 'Inter_700Bold', fontSize: 13, color: colors.onPrimary },
+  modelChip: { flexDirection: 'row', alignItems: 'center', gap: 6, marginHorizontal: 20, marginBottom: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: colors.surfaceContainerLow },
+  modelChipText: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.onSurfaceVariant },
+  modelChipLink: { fontFamily: 'Inter_700Bold', fontSize: 12, color: colors.primaryContainer },
   empty: { fontFamily: 'Inter_500Medium', fontSize: 14, color: colors.onSurfaceVariant, textAlign: 'center', marginTop: 30 },
   sessionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.surfaceContainerLowest, borderWidth: 1, borderColor: 'rgba(193,200,194,0.4)' },
   sessionActive: { borderColor: colors.primaryContainer },

@@ -228,16 +228,39 @@ const SettingsPanel: React.FC<{
 
         <div>
           <label className="text-xs text-slate-400 font-medium mb-1 block">Model</label>
-          <select
-            id="ai-advisor-model-select"
-            value={form.modelName}
-            onChange={e => setForm(f => ({ ...f, modelName: e.target.value }))}
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
-          >
-            {availableModels.map((m: any) => (
-              <option key={m.id} value={m.id}>{m.name}</option>
-            ))}
-          </select>
+          {form.aiProvider === 'OPENROUTER' ? (
+            <>
+              {/* OpenRouter hosts hundreds of models (including free ones), so the ID is free text with suggestions */}
+              <input
+                id="ai-advisor-model-input"
+                list="openrouter-models"
+                type="text"
+                value={form.modelName}
+                onChange={e => setForm(f => ({ ...f, modelName: e.target.value.trim() }))}
+                placeholder="e.g. meta-llama/llama-3.3-70b-instruct:free"
+                autoComplete="off"
+                spellCheck={false}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-indigo-500 focus:outline-none"
+              />
+              <datalist id="openrouter-models">
+                {availableModels.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </datalist>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Type any model ID from <a href="https://openrouter.ai/models?q=free" target="_blank" rel="noreferrer" className="text-indigo-400 hover:text-indigo-300">openrouter.ai/models</a> — models ending in <span className="font-mono">:free</span> cost nothing. Pick a suggestion or paste your own.
+              </p>
+            </>
+          ) : (
+            <select
+              id="ai-advisor-model-select"
+              value={form.modelName}
+              onChange={e => setForm(f => ({ ...f, modelName: e.target.value }))}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
+            >
+              {availableModels.map((m: any) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          )}
         </div>
 
         <div>

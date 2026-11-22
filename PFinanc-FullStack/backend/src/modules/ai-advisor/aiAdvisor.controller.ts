@@ -34,9 +34,15 @@ export class AIAdvisorController {
         monthlySipBudgetInr, monthlyStockBudgetInr,
       } = req.body;
 
+      // Model IDs are free text for OpenRouter; accept only the characters real IDs use.
+      const cleanModel = typeof modelName === 'string' ? modelName.trim() : undefined;
+      if (cleanModel !== undefined && cleanModel !== '' && !/^[A-Za-z0-9._:\/@+-]{1,150}$/.test(cleanModel)) {
+        return res.status(400).json({ success: false, error: { code: 'INVALID_MODEL', message: 'Model ID can only contain letters, numbers and . _ : / - (no spaces).' } });
+      }
+
       const cfg = await AIAdvisorService.upsertConfig(userId, householdId, {
         aiProvider,
-        modelName,
+        modelName: cleanModel || undefined,
         // Masked/omitted key = keep the stored one; empty string = clear it.
         apiKeyOverride:
           apiKeyOverride === undefined || (typeof apiKeyOverride === 'string' && apiKeyOverride.startsWith(AIAdvisorService.KEY_MASK))

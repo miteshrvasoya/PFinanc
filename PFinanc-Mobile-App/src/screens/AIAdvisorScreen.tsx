@@ -165,6 +165,10 @@ export const AIAdvisorScreen: React.FC<Props> = ({ onBack, onNavigate }) => {
       Alert.alert('Check your key', 'That key looks too short. Copy the full key from your AI provider.');
       return;
     }
+    if (provider === 'OPENROUTER' && !model.trim()) {
+      Alert.alert('Enter a model', 'Type an OpenRouter model ID, or tap one of the suggestions.');
+      return;
+    }
     setSaving(true);
     try {
       const body: Record<string, any> = {
@@ -209,9 +213,26 @@ export const AIAdvisorScreen: React.FC<Props> = ({ onBack, onNavigate }) => {
         ))}
       </View>
 
+      {provider === 'OPENROUTER' && (
+        <>
+          <Text style={styles.label}>Model ID</Text>
+          <TextInput
+            style={styles.inputSolo}
+            value={model}
+            onChangeText={(t) => setModel(t.trim())}
+            placeholder="e.g. meta-llama/llama-3.3-70b-instruct:free"
+            placeholderTextColor={colors.outline}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Text style={styles.help}>
+            OpenRouter has hundreds of models. Type any model ID from openrouter.ai/models. IDs ending in ":free" cost nothing. Or tap a suggestion:
+          </Text>
+        </>
+      )}
       {providerModels.length > 0 && (
         <>
-          <Text style={styles.label}>Model</Text>
+          {provider !== 'OPENROUTER' && <Text style={styles.label}>Model</Text>}
           <View style={styles.chipWrap}>
             {providerModels.map((m) => (
               <Pressable key={m.id} style={[styles.chip, model === m.id && styles.chipOn]} onPress={() => setModel(m.id)}>
@@ -465,7 +486,7 @@ export const AIAdvisorScreen: React.FC<Props> = ({ onBack, onNavigate }) => {
               </Pressable>
             ))}
           </View>
-          {tab === 'checkup' ? renderReport() : <AIChatPanel onOpenSettings={() => setView('settings')} />}
+          {tab === 'checkup' ? renderReport() : <AIChatPanel onOpenSettings={() => setView('settings')} providerLabel={PROVIDERS.find((p) => p.key === config?.aiProvider)?.label} modelName={config?.modelName} />}
         </>
       )}
     </KeyboardAvoidingView>
