@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
 import { apiClient } from '../api/client';
+import { ServerSettingsModal } from '../components/ServerSettingsModal';
 
 export const LoginScreen = () => {
   const insets = useSafeAreaInsets();
@@ -19,6 +20,7 @@ export const LoginScreen = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [serverModal, setServerModal] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
@@ -34,7 +36,15 @@ export const LoginScreen = () => {
         await login(token, user, defaultHousehold);
       }
     } catch (error: any) {
-      Alert.alert('Login failed', error.message || 'Invalid credentials');
+      const msg: string = error.message || 'Invalid credentials';
+      if (/can't reach|took too long/i.test(msg)) {
+        Alert.alert('Can\'t connect', msg, [
+          { text: 'Server settings', onPress: () => setServerModal(true) },
+          { text: 'OK', style: 'cancel' },
+        ]);
+      } else {
+        Alert.alert('Login failed', msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -137,7 +147,12 @@ export const LoginScreen = () => {
             <Text style={styles.link}>Create an account</Text>
           </Pressable>
         </View>
+        <Pressable onPress={() => setServerModal(true)} style={styles.serverLink} hitSlop={8}>
+          <MaterialIcons name="settings-ethernet" size={16} color={colors.outline} />
+          <Text style={styles.serverLinkText}>Can't connect? Server settings</Text>
+        </Pressable>
         <View style={{ height: insets.bottom + 16 }} />
+        <ServerSettingsModal visible={serverModal} onClose={() => setServerModal(false)} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -188,5 +203,7 @@ const styles = StyleSheet.create({
   trustRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 16 },
   trustText: { fontFamily: 'Inter_500Medium', fontSize: 11, color: colors.outline },
   footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 24 },
+  serverLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 20 },
+  serverLinkText: { fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.outline },
   footerText: { fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.onSurfaceVariant },
 });
