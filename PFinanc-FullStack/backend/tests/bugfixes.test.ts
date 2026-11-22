@@ -43,10 +43,10 @@ beforeAll(async () => {
   await runMigrations();
   await runSeed();
 
-  const owner = await login('mitesh@pfinanc.local');
+  const owner = await login('owner@pfinanc.local');
   ownerToken = owner.token;
   householdId = owner.defaultHouseholdId;
-  memberToken = (await login('mother@pfinanc.local')).token;
+  memberToken = (await login('member@pfinanc.local')).token;
 
   const reg = await request(app).post('/api/auth/register').send({
     email: `stranger_${Date.now()}@otherfamily.local`,
@@ -57,7 +57,7 @@ beforeAll(async () => {
   strangerHouseholdId = reg.body.data.defaultHouseholdId;
 
   const accounts = await request(app).get('/api/accounts').set(auth(ownerToken));
-  hdfcId = accounts.body.data.find((a: any) => a.name === 'Mitesh - HDFC Bank').id;
+  hdfcId = accounts.body.data.find((a: any) => a.name === 'Owner - HDFC Bank').id;
 });
 
 afterAll(async () => {
@@ -103,7 +103,7 @@ describe('Authorization', () => {
     const inv = await request(app)
       .post('/api/invitations')
       .set(auth(strangerToken, strangerHouseholdId))
-      .send({ email: 'mitesh@pfinanc.local', role: 'MEMBER' });
+      .send({ email: 'owner@pfinanc.local', role: 'MEMBER' });
     expect(inv.status).toBe(201);
 
     const takeover = await request(app)
@@ -143,7 +143,7 @@ describe('Authorization', () => {
 describe('Ledger integrity', () => {
   test('editing an account name does not reset its opening balance', async () => {
     const before = await request(app).get(`/api/accounts/${hdfcId}`).set(auth(ownerToken));
-    const res = await request(app).patch(`/api/accounts/${hdfcId}`).set(auth(ownerToken)).send({ name: 'Mitesh - HDFC Bank' });
+    const res = await request(app).patch(`/api/accounts/${hdfcId}`).set(auth(ownerToken)).send({ name: 'Owner - HDFC Bank' });
     expect(res.status).toBe(200);
     expect(res.body.data.opening_balance).toBe(before.body.data.opening_balance);
     expect(res.body.data.is_shared).toBe(before.body.data.is_shared);

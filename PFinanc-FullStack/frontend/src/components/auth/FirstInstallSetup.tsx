@@ -99,7 +99,7 @@ export const FirstInstallSetup: React.FC<FirstInstallSetupProps> = ({ onComplete
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Mitesh Vasoya"
+                  placeholder="e.g. Jane Doe"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-white focus:outline-none focus:border-indigo-500"
@@ -133,7 +133,7 @@ export const FirstInstallSetup: React.FC<FirstInstallSetupProps> = ({ onComplete
               <input
                 type="text"
                 required
-                placeholder="e.g. Vasoya Family or My Household"
+                placeholder="e.g. The Doe Family or My Household"
                 value={formData.householdName}
                 onChange={(e) => setFormData({ ...formData, householdName: e.target.value })}
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-white focus:outline-none focus:border-indigo-500"

@@ -2,21 +2,21 @@ import request from 'supertest';
 import { app } from '../src/app.js';
 import { pool } from '../src/database/db.js';
 
-let miteshToken = '';
+let ownerToken = '';
 let householdId = '';
-let miteshHdfcId = '';
+let ownerHdfcId = '';
 
 beforeAll(async () => {
   const mRes = await request(app).post('/api/auth/login').send({
-    email: 'mitesh@pfinanc.local',
+    email: 'owner@pfinanc.local',
     password: 'Password@123',
   });
-  miteshToken = mRes.body.data.token;
+  ownerToken = mRes.body.data.token;
   householdId = mRes.body.data.defaultHouseholdId;
 
   const createAccRes = await request(app)
     .post('/api/accounts')
-    .set('Authorization', `Bearer ${miteshToken}`)
+    .set('Authorization', `Bearer ${ownerToken}`)
     .set('x-household-id', householdId)
     .send({
       name: `CSV Test Account ${Date.now()}`,
@@ -25,7 +25,7 @@ beforeAll(async () => {
       opening_balance: 50000,
     });
 
-  miteshHdfcId = createAccRes.body.data.id;
+  ownerHdfcId = createAccRes.body.data.id;
 });
 
 afterAll(async () => {
@@ -45,9 +45,9 @@ describe('CSV Import Engine & Duplicate Detection Tests', () => {
   test('Uploads CSV, parses rows, auto-detects columns, and detects intra-batch duplicates', async () => {
     const res = await request(app)
       .post('/api/imports/preview')
-      .set('Authorization', `Bearer ${miteshToken}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId)
-      .field('account_id', miteshHdfcId)
+      .field('account_id', ownerHdfcId)
       .attach('file', Buffer.from(sampleCsv, 'utf-8'), 'hdfc_statement.csv');
 
     expect(res.status).toBe(200);
@@ -64,7 +64,7 @@ describe('CSV Import Engine & Duplicate Detection Tests', () => {
   test('Commits valid rows atomically to the account ledger', async () => {
     const commitRes = await request(app)
       .post(`/api/imports/commit/${batchId}`)
-      .set('Authorization', `Bearer ${miteshToken}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId)
       .send({ include_duplicates: false });
 
@@ -76,9 +76,9 @@ describe('CSV Import Engine & Duplicate Detection Tests', () => {
   test('Re-uploading the same statement identifies all rows as database duplicates', async () => {
     const res = await request(app)
       .post('/api/imports/preview')
-      .set('Authorization', `Bearer ${miteshToken}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId)
-      .field('account_id', miteshHdfcId)
+      .field('account_id', ownerHdfcId)
       .attach('file', Buffer.from(sampleCsv, 'utf-8'), 'hdfc_statement_reupload.csv');
 
     expect(res.status).toBe(200);

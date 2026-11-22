@@ -72,9 +72,9 @@ export async function runSeed() {
   const passwordHash = await bcrypt.hash('Password@123', 10);
 
   const usersData = [
-    { email: 'mitesh@pfinanc.local', name: 'Mitesh Vasoya', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mitesh' },
-    { email: 'father@pfinanc.local', name: 'Rameshbhai Vasoya (Father)', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Father' },
-    { email: 'mother@pfinanc.local', name: 'Gitaben Vasoya (Mother)', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mother' },
+    { email: 'owner@pfinanc.local', name: 'Demo Owner', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Owner' },
+    { email: 'admin@pfinanc.local', name: 'Demo Admin', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin' },
+    { email: 'member@pfinanc.local', name: 'Demo Member', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Member' },
   ];
 
   const userMap = new Map<string, any>();
@@ -92,25 +92,25 @@ export async function runSeed() {
     userMap.set(u.email, user);
   }
 
-  const mitesh = userMap.get('mitesh@pfinanc.local');
-  const father = userMap.get('father@pfinanc.local');
-  const mother = userMap.get('mother@pfinanc.local');
+  const owner = userMap.get('owner@pfinanc.local');
+  const admin = userMap.get('admin@pfinanc.local');
+  const member = userMap.get('member@pfinanc.local');
 
-  // 3. Seed Household: Vasoya Family
-  let household = await QueryHelper.queryOne(`SELECT * FROM households WHERE name = $1`, ['Vasoya Family']);
+  // 3. Seed Household: Demo Family
+  let household = await QueryHelper.queryOne(`SELECT * FROM households WHERE name = $1`, ['Demo Family']);
   if (!household) {
     household = await QueryHelper.insert('households', {
-      name: 'Vasoya Family',
+      name: 'Demo Family',
       default_currency: 'INR',
-      created_by: mitesh.id,
+      created_by: owner.id,
     });
   }
 
   // Seed Household Memberships
   const members = [
-    { user_id: mitesh.id, role: 'OWNER' },
-    { user_id: father.id, role: 'ADMIN' },
-    { user_id: mother.id, role: 'MEMBER' },
+    { user_id: owner.id, role: 'OWNER' },
+    { user_id: admin.id, role: 'ADMIN' },
+    { user_id: member.id, role: 'MEMBER' },
   ];
 
   for (const m of members) {
@@ -131,8 +131,8 @@ export async function runSeed() {
   // 4. Seed Financial Accounts (Banking + Brokerage)
   const accountsData = [
     {
-      name: 'Mitesh - HDFC Bank',
-      owner_user_id: mitesh.id,
+      name: 'Owner - HDFC Bank',
+      owner_user_id: owner.id,
       account_type: 'BANK',
       institution_name: 'HDFC Bank',
       account_number_masked: 'XXXX XXXX 4921',
@@ -142,30 +142,30 @@ export async function runSeed() {
       notes: 'Primary salary and personal expense account',
     },
     {
-      name: 'Father - SBI Savings',
-      owner_user_id: father.id,
+      name: 'Admin - SBI Savings',
+      owner_user_id: admin.id,
       account_type: 'BANK',
       institution_name: 'State Bank of India',
       account_number_masked: 'XXXX XXXX 8832',
       currency: 'INR',
       opening_balance: 125000.00,
       is_shared: false,
-      notes: 'Father pension & household operational account',
+      notes: 'Admin pension & household operational account',
     },
     {
-      name: 'Mother - SBI Savings',
-      owner_user_id: mother.id,
+      name: 'Member - SBI Savings',
+      owner_user_id: member.id,
       account_type: 'BANK',
       institution_name: 'State Bank of India',
       account_number_masked: 'XXXX XXXX 2190',
       currency: 'INR',
       opening_balance: 85000.00,
       is_shared: false,
-      notes: 'Mother personal savings',
+      notes: 'Member personal savings',
     },
     {
       name: 'Family Cash Reserve',
-      owner_user_id: mitesh.id,
+      owner_user_id: owner.id,
       account_type: 'CASH',
       institution_name: 'Home Cash Vault',
       account_number_masked: 'CASH-001',
@@ -175,8 +175,8 @@ export async function runSeed() {
       notes: 'Shared cash for domestic emergency & petty groceries',
     },
     {
-      name: 'Mitesh - ICICI Sapphiro Credit Card',
-      owner_user_id: mitesh.id,
+      name: 'Owner - ICICI Sapphiro Credit Card',
+      owner_user_id: owner.id,
       account_type: 'CREDIT_CARD',
       institution_name: 'ICICI Bank',
       account_number_masked: 'XXXX XXXX 1004',
@@ -186,8 +186,8 @@ export async function runSeed() {
       notes: 'Credit Card for flights & utilities',
     },
     {
-      name: 'Mitesh - Zerodha Demat & Trading',
-      owner_user_id: mitesh.id,
+      name: 'Owner - Zerodha Demat & Trading',
+      owner_user_id: owner.id,
       account_type: 'BROKERAGE',
       institution_name: 'Zerodha Broking Ltd',
       account_number_masked: 'ZER-XXXX-9912',
@@ -197,8 +197,8 @@ export async function runSeed() {
       notes: 'Direct equity stock and ETF investment account',
     },
     {
-      name: 'Father - Groww Mutual Funds',
-      owner_user_id: father.id,
+      name: 'Admin - Groww Mutual Funds',
+      owner_user_id: admin.id,
       account_type: 'MUTUAL_FUND',
       institution_name: 'Groww (Nextbillion Technology)',
       account_number_masked: 'GRW-XXXX-4411',
@@ -234,10 +234,10 @@ export async function runSeed() {
     accountMap.set(acc.name, account);
   }
 
-  const miteshHdfc = accountMap.get('Mitesh - HDFC Bank');
-  const fatherSbi = accountMap.get('Father - SBI Savings');
-  const zerodhaAcc = accountMap.get('Mitesh - Zerodha Demat & Trading');
-  const growwAcc = accountMap.get('Father - Groww Mutual Funds');
+  const ownerHdfc = accountMap.get('Owner - HDFC Bank');
+  const adminSbi = accountMap.get('Admin - SBI Savings');
+  const zerodhaAcc = accountMap.get('Owner - Zerodha Demat & Trading');
+  const growwAcc = accountMap.get('Admin - Groww Mutual Funds');
 
   // 5. Seed Securities & Daily Prices
   const securitiesData = [
@@ -334,7 +334,7 @@ export async function runSeed() {
     const tcs = secMap.get('TCS');
     const ppfas = secMap.get('PPFAS_FLEXICAP');
 
-    // Mitesh buys 20 Reliance @ ₹1,400 (Net ₹28,060)
+    // Owner buys 20 Reliance @ ₹1,400 (Net ₹28,060)
     await QueryHelper.insert('investment_transactions', {
       household_id: household.id,
       investment_account_id: zerodhaAcc.id,
@@ -349,10 +349,10 @@ export async function runSeed() {
       net_amount: 28060.00,
       source: 'MANUAL',
       status: 'CONFIRMED',
-      created_by: mitesh.id,
+      created_by: owner.id,
     });
 
-    // Mitesh buys 10 TCS @ ₹3,800 (Net ₹38,070)
+    // Owner buys 10 TCS @ ₹3,800 (Net ₹38,070)
     await QueryHelper.insert('investment_transactions', {
       household_id: household.id,
       investment_account_id: zerodhaAcc.id,
@@ -367,10 +367,10 @@ export async function runSeed() {
       net_amount: 38070.00,
       source: 'MANUAL',
       status: 'CONFIRMED',
-      created_by: mitesh.id,
+      created_by: owner.id,
     });
 
-    // Father records SIP in Parag Parikh Flexi Cap ₹10,000 @ NAV ₹112.50 (88.88888889 units)
+    // Admin records SIP in Parag Parikh Flexi Cap ₹10,000 @ NAV ₹112.50 (88.88888889 units)
     await QueryHelper.insert('investment_transactions', {
       household_id: household.id,
       investment_account_id: growwAcc.id,
@@ -385,10 +385,10 @@ export async function runSeed() {
       net_amount: 10000.00,
       source: 'MANUAL',
       status: 'CONFIRMED',
-      created_by: father.id,
+      created_by: admin.id,
     });
 
-    // Mitesh receives Reliance Dividend ₹400
+    // Owner receives Reliance Dividend ₹400
     await QueryHelper.insert('investment_transactions', {
       household_id: household.id,
       investment_account_id: zerodhaAcc.id,
@@ -399,7 +399,7 @@ export async function runSeed() {
       net_amount: 400.00,
       source: 'MANUAL',
       status: 'CONFIRMED',
-      created_by: mitesh.id,
+      created_by: owner.id,
     });
   }
 
@@ -411,7 +411,7 @@ export async function runSeed() {
   if (parseInt(fdCount?.count || '0', 10) === 0) {
     await QueryHelper.insert('fixed_deposits', {
       household_id: household.id,
-      owner_user_id: father.id,
+      owner_user_id: admin.id,
       institution_name: 'State Bank of India',
       fd_number_masked: 'FD-SBI-XXXX-9012',
       principal_amount: 100000.00,
@@ -422,7 +422,7 @@ export async function runSeed() {
       maturity_amount: 107449.00,
       current_value: 104520.00,
       status: 'ACTIVE',
-      notes: 'Father 1-Year Cumulative Fixed Deposit',
+      notes: 'Admin 1-Year Cumulative Fixed Deposit',
     });
   }
 
@@ -433,13 +433,13 @@ export async function runSeed() {
   if (parseInt(retCount?.count || '0', 10) === 0) {
     const epf = await QueryHelper.insert('retirement_accounts', {
       household_id: household.id,
-      user_id: mitesh.id,
+      user_id: owner.id,
       asset_type: 'EPF',
       institution_name: 'EPFO (Employees Provident Fund Organisation)',
       account_number_masked: 'EPF-MH-BAN-XXXX-1029',
       opening_balance: 450000.00,
       current_balance: 457200.00,
-      notes: 'Mitesh Primary Corporate EPF',
+      notes: 'Owner Primary Corporate EPF',
     });
 
     await QueryHelper.insert('retirement_contributions', {
@@ -456,13 +456,13 @@ export async function runSeed() {
 
     await QueryHelper.insert('retirement_accounts', {
       household_id: household.id,
-      user_id: father.id,
+      user_id: admin.id,
       asset_type: 'PPF',
       institution_name: 'State Bank of India (PPF)',
       account_number_masked: 'PPF-SBI-XXXX-5521',
       opening_balance: 320000.00,
       current_balance: 320000.00,
-      notes: 'Father Public Provident Fund Account',
+      notes: 'Admin Public Provident Fund Account',
     });
   }
 

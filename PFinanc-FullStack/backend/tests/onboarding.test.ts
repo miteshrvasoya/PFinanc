@@ -33,14 +33,14 @@ describe('Phase 2.5: Production Onboarding, Initial Data, and Clean Initializati
   });
 
   // 2. First User Registration & Household Naming
-  it('Step 2: First user registers, becomes OWNER of "Vasoya Family", and initializes onboarding', async () => {
+  it('Step 2: First user registers, becomes OWNER of "Demo Family", and initializes onboarding', async () => {
     const res = await request(app)
       .post('/api/auth/register')
       .send({
-        name: 'Mitesh Vasoya',
-        email: 'mitesh@pfinanc.local',
+        name: 'Demo Owner',
+        email: 'owner@pfinanc.local',
         password: 'Password@123',
-        household_name: 'Vasoya Family',
+        household_name: 'Demo Family',
       });
 
     expect(res.status).toBe(201);
@@ -170,14 +170,14 @@ describe('Phase 2.5: Production Onboarding, Initial Data, and Clean Initializati
   });
 
   // 6. Family Invitations & Independent Member Onboarding
-  it('Step 6: Household owner invites Father; Father joins and has independent onboarding state', async () => {
+  it('Step 6: Household owner invites Admin; Admin joins and has independent onboarding state', async () => {
     const inviteRes = await request(app)
       .post('/api/invitations')
       .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', ownerHouseholdId)
       .send({
-        email: 'father@pfinanc.local',
-        name: 'Father Vasoya',
+        email: 'admin@pfinanc.local',
+        name: 'Demo Admin',
         role: 'ADMIN',
       });
 
@@ -187,14 +187,14 @@ describe('Phase 2.5: Production Onboarding, Initial Data, and Clean Initializati
     // Public inspection of invitation token
     const inspectRes = await request(app).get(`/api/invitations/public/${token}`);
     expect(inspectRes.status).toBe(200);
-    expect(inspectRes.body.data.email).toBe('father@pfinanc.local');
-    expect(inspectRes.body.data.household_name).toBe('Vasoya Family');
+    expect(inspectRes.body.data.email).toBe('admin@pfinanc.local');
+    expect(inspectRes.body.data.household_name).toBe('Demo Family');
 
-    // Father accepts invitation
+    // Admin accepts invitation
     const acceptRes = await request(app)
       .post(`/api/invitations/public/${token}/accept`)
       .send({
-        name: 'Father Vasoya',
+        name: 'Demo Admin',
         password: 'Password@123',
       });
 
@@ -202,7 +202,7 @@ describe('Phase 2.5: Production Onboarding, Initial Data, and Clean Initializati
     memberToken = acceptRes.body.data.token;
     memberUserId = acceptRes.body.data.user.id;
 
-    // Father has their own independent onboarding state
+    // Admin has their own independent onboarding state
     const memberOnboarding = await request(app)
       .get('/api/onboarding/status')
       .set('Authorization', `Bearer ${memberToken}`)
