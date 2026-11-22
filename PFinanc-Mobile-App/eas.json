@@ -12,7 +12,7 @@
         "gradleCommand": ":app:assembleDebug"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://p-financ-topaz.vercel.app"
+        "EXPO_PUBLIC_API_URL": "https://your-api.example.com"
       }
     },
     "preview": {
@@ -21,7 +21,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://p-financ-topaz.vercel.app"
+        "EXPO_PUBLIC_API_URL": "https://your-api.example.com"
       }
     },
     "production": {
@@ -29,15 +29,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://p-financ-topaz.vercel.app"
-      }
-    }
-  },
-  "submit": {
-    "production": {
-      "android": {
-        "serviceAccountKeyPath": "./google-service-account.json",
-        "track": "internal"
+        "EXPO_PUBLIC_API_URL": "https://your-api.example.com"
       }
     }
   }

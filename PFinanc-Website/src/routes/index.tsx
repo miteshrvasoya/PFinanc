@@ -42,9 +42,9 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: "PFinanc — Your finances, without the manual work" },
       { property: "og:description", content: "A privacy-first financial operating system for individuals and families." },
       { property: "og:type", content: "website" },
-      { property: "og:image", content: "https://pub-595eff77dd1b4f74a7e97b4c8f1604ce.r2.dev/og-image.png" }, // IMPORTANT: Change this to your actual production domain!
+      { property: "og:image", content: "/og-image.png" }, // Set this to your deployed site URL, e.g. https://your-domain/og-image.png
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:image", content: "https://pub-595eff77dd1b4f74a7e97b4c8f1604ce.r2.dev/og-image.png" }, // IMPORTANT: Change this to your actual production domain!
+      { name: "twitter:image", content: "/og-image.png" }, // Set this to your deployed site URL, e.g. https://your-domain/og-image.png
     ],
   }),
   component: Index,
@@ -181,12 +181,5 @@ function FAQ() {
 }
 
 function Footer() {
-  const connectLinks: Record<string, string> = {
-    "X": "https://x.com/mitesh_rv",
-    "Portfolio": "https://mitesh-vasoya.vercel.app",
-    "GitHub": "https://github.com/miteshrvasoya",
-    "LinkedIn": "https://www.linkedin.com/in/mitesh-vasoya"
-  };
-
-  return <footer><div className="footer-main"><div className="footer-brand"><a href="#top" className="logo"><i />PFinanc</a><p>Your finances, without the manual work.</p><div style={{ marginTop: "1rem" }}><small>Built by Mitesh Vasoya</small></div></div>{[["Product", ["Features", "Investments", "Family Finance", "Privacy", "Roadmap"]], ["Developers", ["GitHub", "Documentation", "Architecture", "Contributing", "Self-hosting"]], ["Connect", ["X", "LinkedIn", "Portfolio", "GitHub"]], ["Legal", ["Privacy", "Terms", "Security"]]].map(([title, links]) => <div className="footer-col" key={String(title)}><b>{String(title)}</b>{(links as string[]).map(x => <a key={x} href={title === "Connect" ? connectLinks[x] : (x === "GitHub" ? github : "#top")} target={title === "Connect" ? "_blank" : undefined} rel={title === "Connect" ? "noreferrer" : undefined} onClick={() => trackClick(`Footer ${title} - ${x}`)}>{x}</a>)}</div>)}</div><div className="footer-bottom"><span>© 2026 PFinanc. Open-source personal finance.</span><span>Built for individuals, families and developers.</span></div></footer>;
+  return <footer><div className="footer-main"><div className="footer-brand"><a href="#top" className="logo"><i />PFinanc</a><p>Your finances, without the manual work.</p><div style={{ marginTop: "1rem" }}><small>Open source · MIT licensed</small></div></div>{[["Product", ["Features", "Investments", "Family Finance", "Privacy", "Roadmap"]], ["Developers", ["GitHub", "Documentation", "Architecture", "Contributing", "Self-hosting"]], ["Legal", ["Privacy", "Terms", "Security"]]].map(([title, links]) => <div className="footer-col" key={String(title)}><b>{String(title)}</b>{(links as string[]).map(x => <a key={x} href={x === "GitHub" ? github : "#top"} onClick={() => trackClick(`Footer ${title} - ${x}`)}>{x}</a>)}</div>)}</div><div className="footer-bottom"><span>© 2026 PFinanc. Open-source personal finance.</span><span>Built for individuals, families and developers.</span></div></footer>;
 }

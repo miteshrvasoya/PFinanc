@@ -22,7 +22,7 @@
     "express",
     "react"
   ],
-  "author": "Mitesh Vasoya",
+  "author": "PFinanc contributors",
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^10.0.5"

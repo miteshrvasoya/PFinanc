@@ -12,10 +12,10 @@
     "scheme": "pfinanc",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.miteshvasoya.pfinanc"
+      "bundleIdentifier": "com.example.pfinanc"
     },
     "android": {
-      "package": "com.miteshvasoya.pfinanc",
+      "package": "com.example.pfinanc",
       "versionCode": 1,
       "permissions": [
         "USE_BIOMETRIC",
@@ -36,12 +36,6 @@
     },
     "plugins": [
       "@react-native-community/datetimepicker"
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "9391d28e-5756-453b-80f5-172e358575b8"
-      }
-    },
-    "owner": "miteshvasoya"
+    ]
   }
 }

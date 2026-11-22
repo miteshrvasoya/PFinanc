@@ -101,7 +101,7 @@ export const LoginView: React.FC = () => {
                   <input
                     type="text"
                     required
-                    placeholder="Mitesh Vasoya"
+                    placeholder="Jane Doe"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-white focus:outline-none focus:border-indigo-500"
@@ -117,7 +117,7 @@ export const LoginView: React.FC = () => {
                 <input
                   type="email"
                   required
-                  placeholder="mitesh@pfinanc.local"
+                  placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-white focus:outline-none focus:border-indigo-500"

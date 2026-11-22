@@ -18,7 +18,7 @@ PFinanc provides a dual-layer security model: **Household Multi-Tenancy Boundary
 ## 2. Account Ownership & Visibility
 
 1. **Private Account**:
-   - Belongs to an individual member (e.g., `Mitesh - HDFC Bank`).
+   - Belongs to an individual member (e.g., `Owner - HDFC Bank`).
    - Accessible by the account owner, Household Owner, and Household Admins.
    - Other standard members cannot view or post transactions into this account.
 

@@ -283,7 +283,7 @@ export const StatementImportScreen: React.FC<{ onBack?: () => void; onNavigate?:
                     <MaterialIcons name="sync-alt" size={20} color={colors.tertiary} />
                   </View>
                   <View>
-                    <Text style={styles.txTitle}>Transfer to Disha Vasoya</Text>
+                    <Text style={styles.txTitle}>Transfer to Family Member</Text>
                     <Text style={styles.txSubtitle}>20 Oct 2024 • <Text style={styles.txSubtitleTertiary}>Joint Pool Vault</Text></Text>
                   </View>
                 </View>

@@ -16,7 +16,7 @@ export const VaultIntroductionScreen: React.FC<{ onBack?: () => void; onNavigate
         </TouchableOpacity>
         <View style={styles.contextPill}>
           <View style={styles.contextDot} />
-          <Text style={styles.contextText}>Household • Pandya Family</Text>
+          <Text style={styles.contextText}>Household • My Family</Text>
         </View>
         <View style={styles.headerSpacer}>
           <MaterialIcons name="security" size={20} color={colors.outlineVariant} />

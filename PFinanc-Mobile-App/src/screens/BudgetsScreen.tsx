@@ -100,7 +100,7 @@ export const BudgetsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => 
                 <View>
                   <Text style={styles.categoryTitle}>Groceries & Gourmet</Text>
                   <View style={styles.categorySubBadge}>
-                    <Text style={styles.categorySubBadgeText}>Shared Pool • Disha & You</Text>
+                    <Text style={styles.categorySubBadgeText}>Shared Pool • Family & You</Text>
                   </View>
                 </View>
               </View>
@@ -390,7 +390,7 @@ export const BudgetsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => 
             <View style={styles.ruleItem}>
               <View style={styles.ruleInfo}>
                 <Text style={styles.ruleItemTitle}>Shared Household Breach Alert</Text>
-                <Text style={styles.ruleItemDesc}>Notifies Disha via encrypted relay if joint groceries exceed ₹25k</Text>
+                <Text style={styles.ruleItemDesc}>Notifies family members via encrypted relay if joint groceries exceed ₹25k</Text>
               </View>
               <Switch 
                 value={rule3} 

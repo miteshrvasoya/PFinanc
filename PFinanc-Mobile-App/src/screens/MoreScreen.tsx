@@ -7,9 +7,13 @@ import { comingSoon } from '../utils/notify';
 import { FamilyScopeModal } from '../components/FamilyScopeModal';
 import { InviteMemberModal } from '../components/InviteMemberModal';
 import { apiClient } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
 
 export const MoreScreen: React.FC<{ onNavigate?: (screen: string) => void }> = ({ onNavigate }) => {
+  const { user } = useAuth();
+  const displayName = user?.name || 'Your account';
+  const initials = displayName.split(' ').filter(Boolean).slice(0, 2).map((w: string) => w[0]?.toUpperCase()).join('') || 'U';
   const insets = useSafeAreaInsets();
   const [isPrivacyMasked, setIsPrivacyMasked] = useState(false);
   const [activeTab, setActiveTab] = useState<'personal' | 'family'>('family');
@@ -56,10 +60,7 @@ export const MoreScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.avatarContainer}>
-            <Image 
-              source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAJ1_vKqcEx3MKozjmMDSydeIofcGQOBZy_P3LF8gilwTXRgUp7BVO_AssnX2AZMbDcukgYlkbcWy1LtL8ZpoCABD8m6damHq3XnfA9RGJOKwf2yPMO6PHgP32JqyMD9qXAaohBPBDnJobwOKvTENzQvWCmRD2qKC5pwBowOIS2AaccOwHnMAAe-mteRVG6ElzHu_3UB9XbSTnVbX5zm5tmHywJtigqosmMN4D4oQWnda2PwS7iHtOLdw' }}
-              style={styles.avatar}
-            />
+            <View style={[styles.avatar, { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryFixed }]}><MaterialIcons name="person" size={22} color={colors.primary} /></View>
           </View>
           <View>
             <Text style={styles.headerTitle}>PFinanc</Text>
@@ -85,21 +86,21 @@ export const MoreScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
           <View style={styles.userRow}>
             <View style={styles.userInfo}>
               <View style={styles.userInitials}>
-                <Text style={styles.userInitialsText}>MV</Text>
+                <Text style={styles.userInitialsText}>{initials}</Text>
               </View>
               <View>
                 <View style={styles.nameRow}>
-                  <Text style={styles.userName}>Mitesh Vasoya</Text>
+                  <Text style={styles.userName}>{displayName}</Text>
                   <View style={styles.adminBadge}>
                     <Text style={styles.adminBadgeText}>Admin</Text>
                   </View>
                 </View>
-                <Text style={styles.userEmail}>mitesh@vasoya.family</Text>
+                <Text style={styles.userEmail}>{user?.email || ''}</Text>
               </View>
             </View>
             <Pressable style={styles.scopeSelector} onPress={() => setIsScopeModalVisible(true)}>
               <MaterialIcons name="groups" size={16} color={colors.primary} />
-              <Text style={styles.scopeSelectorText}>Vasoya Family (4)</Text>
+              <Text style={styles.scopeSelectorText}>Whole Family</Text>
               <MaterialIcons name="expand-more" size={16} color={colors.onSurfaceVariant} />
             </Pressable>
           </View>
@@ -231,7 +232,7 @@ export const MoreScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
                 </View>
                 <View>
                   <Text style={styles.moduleItemTitle}>Family Overview</Text>
-                  <Text style={styles.moduleItemDesc}>Manage Disha, Father, Mother & shared budgets</Text>
+                  <Text style={styles.moduleItemDesc}>Manage family members & shared budgets</Text>
                 </View>
               </View>
               <View style={styles.moduleItemRightIcons}>

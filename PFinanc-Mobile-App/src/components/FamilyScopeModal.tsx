@@ -38,7 +38,7 @@ export const FamilyScopeModal: React.FC<FamilyScopeModalProps> = ({ visible, onC
                   <MaterialIcons name="groups" size={24} color={colors.onPrimary} />
                 </View>
                 <View>
-                  <Text style={styles.optionTitle}>Vasoya Family (4 Members)</Text>
+                  <Text style={styles.optionTitle}>Whole Family</Text>
                   <Text style={styles.optionDesc}>Shared accounts, bills & emergency reserves</Text>
                 </View>
               </View>
@@ -52,7 +52,7 @@ export const FamilyScopeModal: React.FC<FamilyScopeModalProps> = ({ visible, onC
                   <Text style={styles.avatarText}>MV</Text>
                 </View>
                 <View>
-                  <Text style={styles.optionTitle}>Mitesh Vasoya (Personal Vault)</Text>
+                  <Text style={styles.optionTitle}>Only Me (Personal)</Text>
                   <Text style={styles.optionDesc}>Private accounts & individual investments</Text>
                 </View>
               </View>

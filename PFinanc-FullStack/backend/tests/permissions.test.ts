@@ -2,19 +2,19 @@ import request from 'supertest';
 import { app } from '../src/app.js';
 import { pool } from '../src/database/db.js';
 
-let miteshToken = '';
+let ownerToken = '';
 let outsideUserToken = '';
 let householdId = '';
 let outsideHouseholdId = '';
-let miteshHdfcId = '';
+let ownerHdfcId = '';
 
 beforeAll(async () => {
-  // Login as Mitesh
+  // Login as Owner
   const mRes = await request(app).post('/api/auth/login').send({
-    email: 'mitesh@pfinanc.local',
+    email: 'owner@pfinanc.local',
     password: 'Password@123',
   });
-  miteshToken = mRes.body.data.token;
+  ownerToken = mRes.body.data.token;
   householdId = mRes.body.data.defaultHouseholdId;
 
   const uniqueEmail = `stranger_${Date.now()}@otherfamily.local`;
@@ -26,13 +26,13 @@ beforeAll(async () => {
   outsideUserToken = outRes.body.data.token;
   outsideHouseholdId = outRes.body.data.defaultHouseholdId;
 
-  // Get Mitesh's account ID
+  // Get Owner's account ID
   const accRes = await request(app)
     .get('/api/accounts')
-    .set('Authorization', `Bearer ${miteshToken}`)
+    .set('Authorization', `Bearer ${ownerToken}`)
     .set('x-household-id', householdId);
 
-  miteshHdfcId = accRes.body.data[0].id;
+  ownerHdfcId = accRes.body.data[0].id;
 });
 
 afterAll(async () => {
@@ -44,7 +44,7 @@ describe('Multi-Tenancy & RBAC Authorization Security Tests', () => {
     const res = await request(app)
       .get('/api/dashboard')
       .set('Authorization', `Bearer ${outsideUserToken}`)
-      .set('x-household-id', householdId); // Stranger tries accessing Mitesh's household
+      .set('x-household-id', householdId); // Stranger tries accessing Owner's household
 
     expect(res.status).toBe(403);
     expect(res.body.success).toBe(false);
@@ -54,7 +54,7 @@ describe('Multi-Tenancy & RBAC Authorization Security Tests', () => {
   test('User from Household B cannot view or modify accounts belonging to Household A', async () => {
     // Attempt to view account
     const viewRes = await request(app)
-      .get(`/api/accounts/${miteshHdfcId}`)
+      .get(`/api/accounts/${ownerHdfcId}`)
       .set('Authorization', `Bearer ${outsideUserToken}`)
       .set('x-household-id', outsideHouseholdId);
 
@@ -67,7 +67,7 @@ describe('Multi-Tenancy & RBAC Authorization Security Tests', () => {
       .set('Authorization', `Bearer ${outsideUserToken}`)
       .set('x-household-id', outsideHouseholdId)
       .send({
-        account_id: miteshHdfcId,
+        account_id: ownerHdfcId,
         transaction_type: 'EXPENSE',
         amount: 50000,
         description: 'Malicious unauthorized debit attempt',

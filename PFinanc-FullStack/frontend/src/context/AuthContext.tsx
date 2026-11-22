@@ -27,7 +27,6 @@ interface AuthContextType {
   logout: () => void;
   switchHousehold: (householdId: string) => void;
   setViewMode: (mode: 'household' | 'personal') => void;
-  switchDemoUser: (email: string) => Promise<void>;
   reloadUser: () => Promise<void>;
 }
 
@@ -171,10 +170,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const switchDemoUser = async (email: string) => {
-    await login(email, 'Password@123');
-  };
-
   const reloadUser = async () => {
     await initAuth();
   };
@@ -193,7 +188,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         switchHousehold,
         setViewMode,
-        switchDemoUser,
         reloadUser,
       }}
     >

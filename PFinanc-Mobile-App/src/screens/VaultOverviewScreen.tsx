@@ -56,17 +56,14 @@ export const VaultOverviewScreen: React.FC<{ onBack?: () => void; onNavigate?: (
       <View style={styles.appBar}>
         <TouchableOpacity style={styles.profileSection} onPress={onBack}>
           <View style={styles.avatarContainer}>
-            <Image 
-              source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCjlmnBoTr0_CO-_RV9ZD29XHG30Hw6cQQMTnBxr8dJkVxR8KQHo-jOdlZ-i5cfQuupfBSLJ1lGb_-6QQei2-UjOrjGEqMxzFjPGJxUaC_rqLHCAwUaYwl1Pzp9DP6tjMUrsaIk84lTRJkDlrSvRhlO1TR9yaCyTrvANh7NwYqFkni8xgG1JXPEdxSQ69iXjV33lJ9ySGWc8fpVBxmaYMbrTS5e1vncMv62ZoEB66jiWLngSEdGz_0tIw' }} 
-              style={styles.avatar} 
-            />
+            <View style={[styles.avatar, { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryFixed }]}><MaterialIcons name="person" size={22} color={colors.primary} /></View>
             <View style={styles.avatarBadge} />
           </View>
           <View>
             <Text style={styles.appBarTitle}>Vault</Text>
             <View style={styles.appBarSubtitleRow}>
               <MaterialIcons name="cottage" size={11} color={colors.onSurfaceVariant} />
-              <Text style={styles.appBarSubtitle}> Pandya Household</Text>
+              <Text style={styles.appBarSubtitle}> My Household</Text>
             </View>
           </View>
         </TouchableOpacity>
