@@ -718,6 +718,53 @@ class ApiClient {
     return this.request('/ai-advisor/notifications/read-all', { method: 'POST' });
   }
 
+  // ── AI chat ──
+  async listAIChatSessions() {
+    return this.request('/ai-advisor/chat/sessions');
+  }
+
+  async getAIChatSession(id: string) {
+    return this.request(`/ai-advisor/chat/sessions/${id}`);
+  }
+
+  /** Send a message; without sessionId a new chat is started automatically. */
+  async sendAIChatMessage(data: { content: string; sessionId?: string; focus?: 'general' | 'investments' | 'spending' }) {
+    return this.request('/ai-advisor/chat/message', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async regenerateAIChat(id: string) {
+    return this.request(`/ai-advisor/chat/sessions/${id}/regenerate`, { method: 'POST' });
+  }
+
+  async renameAIChatSession(id: string, title: string) {
+    return this.request(`/ai-advisor/chat/sessions/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) });
+  }
+
+  async deleteAIChatSession(id: string) {
+    return this.request(`/ai-advisor/chat/sessions/${id}`, { method: 'DELETE' });
+  }
+
+  // ── MCP (connect external AI assistants) ──
+  async getMcpSetup() {
+    return this.request('/mcp/setup');
+  }
+
+  async listMcpConnections() {
+    return this.request('/mcp/connections');
+  }
+
+  async createMcpConnection(data: { name: string; scopes: string[]; expiresInDays?: number | null }) {
+    return this.request('/mcp/connections', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async revokeMcpConnection(id: string) {
+    return this.request(`/mcp/connections/${id}`, { method: 'DELETE' });
+  }
+
+  async getMcpActivity(limit = 30) {
+    return this.request(`/mcp/activity?limit=${limit}`);
+  }
+
   async getAIAdvisorModels() {
     return this.request('/ai-advisor/models');
   }

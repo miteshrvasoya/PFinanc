@@ -12,6 +12,7 @@
     "crypto-js": "^4.2.0",
     "expo": "~57.0.25",
     "expo-blur": "~57.0.3",
+    "expo-clipboard": "~57.0.2",
     "expo-linear-gradient": "~57.0.2",
     "expo-local-authentication": "~57.0.3",
     "expo-status-bar": "~57.0.1",

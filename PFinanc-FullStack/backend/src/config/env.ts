@@ -42,4 +42,6 @@ export const config = {
     enabled: process.env.AI_ADVISOR_ENABLED !== 'false',
   },
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3001',
+  // Public address of this API as seen from the internet (used to build the MCP connector URL). Optional.
+  publicBaseUrl: process.env.PUBLIC_BASE_URL || '',
 };

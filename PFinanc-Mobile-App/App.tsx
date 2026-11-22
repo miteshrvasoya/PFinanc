@@ -25,6 +25,7 @@ import { MoreScreen } from './src/screens/MoreScreen';
 import { InsightsScreen } from './src/screens/InsightsScreen';
 import { BudgetsScreen } from './src/screens/BudgetsScreen';
 import { AIAdvisorScreen } from './src/screens/AIAdvisorScreen';
+import { McpSetupScreen } from './src/screens/McpSetupScreen';
 import { StatementImportScreen } from './src/screens/StatementImportScreen';
 import { SecurityScreen } from './src/screens/SecurityScreen';
 import { FamilyMemberScreen } from './src/screens/FamilyMemberScreen';
@@ -61,6 +62,7 @@ const MainNavigator = () => {
   const [isUnlocked, setIsUnlocked] = useState(false);
 
   const [refreshKey, setRefreshKey] = useState(0);
+  const [mcpReturnTo, setMcpReturnTo] = useState('none'); // where "back" goes from the MCP screen
 
   const openAdd = (type: 'expense' | 'income' | 'transfer') => {
     setQuickAddInitialTab(type === 'income' ? 'Income' : type === 'transfer' ? 'Transfer' : 'Expense');
@@ -84,6 +86,7 @@ const MainNavigator = () => {
       if (target === 'history') setTxnFilter({ value: params?.filter ?? 'All', nonce: Date.now() });
       return;
     }
+    if (target === 'mcp') setMcpReturnTo(activeScreen);
     setActiveScreen(target);
   };
 
@@ -113,6 +116,7 @@ const MainNavigator = () => {
       {activeScreen === 'insights' && <InsightsScreen onBack={() => setActiveScreen('none')} />}
       {activeScreen === 'budgets' && <BudgetsScreen onBack={() => setActiveScreen('none')} />}
       {activeScreen === 'advisor' && <AIAdvisorScreen onBack={() => setActiveScreen('none')} onNavigate={navigate} />}
+      {activeScreen === 'mcp' && <McpSetupScreen onBack={() => setActiveScreen(mcpReturnTo)} />}
       {activeScreen === 'imports' && <StatementImportScreen onBack={() => setActiveScreen('none')} onNavigate={navigate} />}
       {activeScreen === 'security' && <SecurityScreen onBack={() => setActiveScreen('none')} />}
       {activeScreen === 'familyMember' && <FamilyMemberScreen onBack={() => setActiveScreen('none')} onNavigate={navigate} />}

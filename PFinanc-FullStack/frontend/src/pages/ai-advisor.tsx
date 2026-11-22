@@ -2,16 +2,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { api } from '../lib/api';
+import { ChatPanel } from '../components/ai/ChatPanel';
+import { McpSetupPanel } from '../components/ai/McpSetupPanel';
 import {
   BotMessageSquare, Play, RefreshCw, Settings2, ClipboardList,
   History, Zap, TrendingUp, TrendingDown, Minus, AlertTriangle,
   CheckCircle2, Clock, ChevronRight, Sparkles, BarChart2,
-  Target, Shield, DollarSign, IndianRupee, Brain, Activity
+  Target, Shield, DollarSign, IndianRupee, Brain, Activity, MessageSquare, Plug
 } from 'lucide-react';
 import { useRouter } from 'next/router';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Recommendation {
+  title?: string;
+  evidence?: string;
   action: string;
   security: string;
   securityType: string;
@@ -38,6 +42,8 @@ interface Report {
   model_name: string;
   tokens_total?: number;
   portfolio_snapshot?: any;
+  /** Full structured report (newer reports): summary, score breakdown, plans, caveats. */
+  report?: any;
 }
 
 interface AdvisorConfig {
@@ -51,7 +57,8 @@ interface AdvisorConfig {
   hasApiKey?: boolean;
 }
 
-type Tab = 'dashboard' | 'recommendations' | 'history' | 'settings';
+type Tab = 'dashboard' | 'chat' | 'recommendations' | 'history' | 'connect' | 'settings';
+const TAB_IDS: Tab[] = ['dashboard', 'chat', 'recommendations', 'history', 'connect', 'settings'];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const ACTION_COLORS: Record<string, { bg: string; text: string; border: string; icon: React.ReactNode }> = {
@@ -121,10 +128,12 @@ const RecommendationCard: React.FC<{ rec: Recommendation; index: number }> = ({ 
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${style.bg} ${style.text} border ${style.border}`}>
             {style.icon} {rec.action}
           </span>
-          <span className="text-sm font-semibold text-white">{rec.security}</span>
-          <span className="text-[10px] px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded border border-slate-700 font-medium">
-            {rec.securityType?.replace('_', ' ')}
-          </span>
+          <span className="text-sm font-semibold text-white">{rec.security || rec.title}</span>
+          {rec.security && rec.securityType && rec.securityType !== 'GENERAL' && (
+            <span className="text-[10px] px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded border border-slate-700 font-medium">
+              {rec.securityType.replace('_', ' ')}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <span className={`w-2 h-2 rounded-full ${PRIORITY_DOT[rec.priority] || 'bg-slate-500'}`} />
@@ -132,10 +141,12 @@ const RecommendationCard: React.FC<{ rec: Recommendation; index: number }> = ({ 
         </div>
       </div>
 
+      {rec.security && rec.title && <p className="text-sm font-medium text-slate-100 mb-1">{rec.title}</p>}
       <p className="text-sm text-slate-300 leading-relaxed mb-3">{rec.reason}</p>
+      {rec.evidence && <p className="text-xs text-slate-500 mb-3">Why: {rec.evidence}</p>}
 
       <div className="flex items-center gap-4 text-xs text-slate-500 flex-wrap">
-        {rec.suggestedAmountInr && (
+        {!!rec.suggestedAmountInr && rec.suggestedAmountInr > 0 && (
           <span className="flex items-center gap-1 text-indigo-300 font-medium">
             <IndianRupee className="w-3 h-3" />
             ₹{rec.suggestedAmountInr.toLocaleString('en-IN')}
@@ -380,7 +391,8 @@ export default function AIAdvisorPage() {
 
   // Deep link: /ai-advisor?tab=settings opens the API key / model settings directly
   useEffect(() => {
-    if (router.query.tab === 'settings') setActiveTab('settings');
+    const t = router.query.tab as Tab | undefined;
+    if (t && TAB_IDS.includes(t)) setActiveTab(t);
   }, [router.query.tab]);
   const [report, setReport] = useState<Report | null>(null);
   const [reports, setReports] = useState<Report[]>([]);
@@ -473,16 +485,23 @@ export default function AIAdvisorPage() {
     try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return []; }
   })();
 
-  const insights: string[] = (() => {
-    const raw = report?.key_insights;
+  // Older reports store insights as plain strings, newer ones as {title, detail, severity, ...}.
+  type InsightView = { title: string; detail?: string; severity?: string };
+  const insights: InsightView[] = (() => {
+    let raw: any = report?.key_insights;
     if (!raw) return [];
-    try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return []; }
+    try { raw = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return []; }
+    if (!Array.isArray(raw)) return [];
+    return raw.map((i: any) => (typeof i === 'string' ? { title: i } : { title: String(i.title ?? ''), detail: i.detail, severity: i.severity }));
   })();
+  const fullReport = report?.report as any | undefined;
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <BarChart2 className="w-4 h-4" /> },
+    { id: 'chat', label: 'Chat', icon: <MessageSquare className="w-4 h-4" /> },
     { id: 'recommendations', label: 'Recommendations', icon: <Target className="w-4 h-4" /> },
     { id: 'history', label: 'History', icon: <History className="w-4 h-4" /> },
+    { id: 'connect', label: 'Connect AI (MCP)', icon: <Plug className="w-4 h-4" /> },
     { id: 'settings', label: 'Settings', icon: <Settings2 className="w-4 h-4" /> },
   ];
 
@@ -636,6 +655,30 @@ export default function AIAdvisorPage() {
                     </div>
                   </div>
 
+                  {/* Summary + score breakdown (newer reports) */}
+                  {fullReport?.summary && (
+                    <div className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-5 space-y-4">
+                      <p className="text-sm text-slate-200 leading-relaxed">{fullReport.summary}</p>
+                      {fullReport.scoreBreakdown && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {([['cashflow', 'Monthly cash'], ['liquidity', 'Ready cash'], ['debt', 'Loans'], ['investments', 'Investments']] as const).map(([k, label]) => {
+                            const v = fullReport.scoreBreakdown[k] ?? 0;
+                            return (
+                              <div key={k}>
+                                <div className="flex justify-between text-[11px] text-slate-400 mb-1"><span>{label}</span><span className="text-white font-semibold">{v}</span></div>
+                                <div className="h-1.5 rounded-full bg-slate-800"><div className={`h-full rounded-full ${v >= 75 ? 'bg-emerald-500' : v >= 50 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${v}%` }} /></div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <button onClick={() => setActiveTab('chat')} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30">Ask a question about this report</button>
+                        <button onClick={() => setActiveTab('connect')} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 border border-slate-700 text-slate-300 hover:border-slate-500">Get a deeper analysis in Claude or ChatGPT</button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Key Insights */}
                   {insights.length > 0 && (
                     <div className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-5">
@@ -643,10 +686,13 @@ export default function AIAdvisorPage() {
                         <Sparkles className="w-4 h-4 text-amber-400" /> Key Insights
                       </h3>
                       <ul className="space-y-2.5">
-                        {insights.map((insight: string, i: number) => (
+                        {insights.map((insight, i) => (
                           <li key={i} className="flex items-start gap-3 text-sm text-slate-300">
-                            <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0" />
-                            {insight}
+                            <span className={`mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${insight.severity === 'critical' ? 'bg-rose-400' : insight.severity === 'warning' ? 'bg-amber-400' : insight.severity === 'positive' ? 'bg-emerald-400' : 'bg-indigo-400'}`} />
+                            <span>
+                              <span className={insight.detail ? 'font-medium text-white' : ''}>{insight.title}</span>
+                              {insight.detail && <span className="block text-slate-400 text-[13px] mt-0.5">{insight.detail}</span>}
+                            </span>
                           </li>
                         ))}
                       </ul>
@@ -834,6 +880,10 @@ export default function AIAdvisorPage() {
           )}
 
           {/* ── SETTINGS TAB ─────────────────────────────────────── */}
+          {activeTab === 'chat' && <ChatPanel onOpenSettings={() => setActiveTab('settings')} onOpenConnect={() => setActiveTab('connect')} />}
+
+          {activeTab === 'connect' && <McpSetupPanel />}
+
           {activeTab === 'settings' && config && (
             <SettingsPanel
               config={config}

@@ -21,6 +21,8 @@ import { physicalAssetsRoutes } from './modules/physical-assets/physicalAssets.r
 import { invitationsRoutes } from './modules/invitations/invitations.routes.js';
 import { statementImportsRoutes } from './modules/statement-imports/statementImports.routes.js';
 import { aiAdvisorRouter } from './modules/ai-advisor/aiAdvisor.routes.js';
+import { mcpManagementRouter } from './modules/mcp/mcp.routes.js';
+import { handleMcpRequest } from './modules/mcp/mcpHttp.js';
 import { automationRouter } from './modules/automation/automation.routes.js';
 import vaultRoutes from './modules/vault/vault.routes.js';
 import { loansRouter } from './modules/loans/loans.routes.js';
@@ -73,6 +75,11 @@ app.use('/api/vault', vaultRoutes);
 app.use('/api/loans', loansRouter);
 app.use('/api/budgets', budgetsRouter);
 app.use('/api/rent', rentRouter);
+app.use('/api/mcp', mcpManagementRouter);
+
+// MCP server endpoint for external AI assistants (Claude, ChatGPT, ...). Auth is its own access token, not the app JWT.
+app.all('/mcp', handleMcpRequest);
+app.all('/mcp/t/:token', handleMcpRequest);
 app.use('/api/splits', splitsRouter);
 
 // Error Handler

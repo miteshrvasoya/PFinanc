@@ -9,7 +9,8 @@ A self-hosted personal and family finance manager: ledger-correct accounts and t
 - **Statement import:** CSV import for bank statements, tradebooks and fund statements, with duplicate detection.
 - **Family accounts:** roles (`OWNER`, `ADMIN`, `MEMBER`, `VIEWER`) with private and shared visibility.
 - **Android SMS scan:** reads bank SMS and prepares drafts for you to approve.
-- **AI advisor (optional):** a money check-up with insights and suggestions, plus chat. Bring your own API key.
+- **AI advisor (optional):** a money check-up with insights and suggestions, plus a chat that knows your portfolio. Bring your own API key.
+- **MCP server:** connect Claude, ChatGPT or any MCP-capable assistant to your portfolio (read-only) so it can research prices and suggest what to hold, sell or buy. See [docs/mcp.md](PFinanc-FullStack/docs/mcp.md).
 - **Clients:** web app, Android/iOS app (Expo), and a marketing site.
 
 ## Repository layout
@@ -67,6 +68,10 @@ AI features are optional and no key ships with this project.
 - **In the app:** open **AI Advisor > Settings** (web, in the sidebar) or the **Settings** button in the AI Advisor screen (mobile), choose a provider (Claude, OpenAI, Gemini or OpenRouter), pick or type a model, and paste your API key. It is stored in your own database and only a masked form (`••••abcd`) is ever returned to clients.
 - **Server-wide default:** instead, set `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` in `backend/.env`.
 - Only aggregated figures are sent to the provider: no account numbers, merchant names or raw SMS text are stored.
+
+### Use your own assistant (MCP)
+
+Your backend exposes an MCP endpoint at `<your-backend-url>/mcp`. In the web app open **AI Advisor > Connect AI (MCP)**, or in the mobile app **More > Connect Claude / ChatGPT**, to create a scoped, revocable access token and get copy-paste setup steps for Claude, ChatGPT and other clients. Claude.ai and ChatGPT reach your server over the internet, so it needs a public HTTPS address (optionally set `PUBLIC_BASE_URL`). Details and security notes: [docs/mcp.md](PFinanc-FullStack/docs/mcp.md).
 
 AI output is guidance generated from your data, not financial advice.
 
