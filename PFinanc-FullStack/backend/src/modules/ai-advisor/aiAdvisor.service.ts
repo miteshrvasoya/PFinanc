@@ -53,6 +53,20 @@ export class AIAdvisorService {
    */
   static async upsertConfig(userId: string, householdId: string, data: Partial<AdvisorConfig>): Promise<AdvisorConfig> {
     const keepKey = data.apiKeyOverride === undefined;
+    // Fields a client did not send keep their stored value, so saving from the web does not wipe what the
+    // mobile app set (and vice versa) - both write to this one row.
+    const existing = await this.getConfig(userId, householdId);
+    const provider = data.aiProvider || existing?.aiProvider || 'OPENROUTER';
+    data = {
+      ...data,
+      aiProvider: provider,
+      modelName: data.modelName || (data.aiProvider && data.aiProvider !== existing?.aiProvider ? undefined : existing?.modelName),
+      scheduleCron: data.scheduleCron ?? existing?.scheduleCron,
+      isEnabled: data.isEnabled ?? existing?.isEnabled,
+      // undefined = keep stored value; null/0 = clear it
+      monthlySipBudgetInr: data.monthlySipBudgetInr === undefined ? existing?.monthlySipBudgetInr : data.monthlySipBudgetInr,
+      monthlyStockBudgetInr: data.monthlyStockBudgetInr === undefined ? existing?.monthlyStockBudgetInr : data.monthlyStockBudgetInr,
+    };
     const row = await QueryHelper.queryOne<any>(
       `INSERT INTO ai_advisor_config (
         user_id, household_id, ai_provider, model_name, api_key_override,

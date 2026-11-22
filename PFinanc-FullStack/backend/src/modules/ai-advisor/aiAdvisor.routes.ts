@@ -25,5 +25,12 @@ aiAdvisorRouter.get('/reports/:id', AIAdvisorController.getReport);
 aiAdvisorRouter.get('/notifications', AIAdvisorController.getNotifications);
 aiAdvisorRouter.post('/notifications/read-all', AIAdvisorController.markAllRead);
 
+// Chat sessions
+aiAdvisorRouter.get('/chat/sessions', AIAdvisorController.listChatSessions);
+aiAdvisorRouter.post('/chat/sessions', AIAdvisorController.createChatSession);
+aiAdvisorRouter.get('/chat/sessions/:id', AIAdvisorController.getChatSession);
+aiAdvisorRouter.delete('/chat/sessions/:id', AIAdvisorController.deleteChatSession);
+aiAdvisorRouter.post('/chat/sessions/:id/messages', AIAdvisorController.sendChatMessage);
+
 // Meta
 aiAdvisorRouter.get('/models', AIAdvisorController.getModels);

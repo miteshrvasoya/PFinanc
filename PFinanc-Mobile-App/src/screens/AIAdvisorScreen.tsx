@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { apiClient } from '../api/client';
+import { AIChatPanel } from '../components/AIChatPanel';
 
 type Provider = 'OPENROUTER' | 'OPENAI' | 'GEMINI' | 'ANTHROPIC';
 
@@ -56,6 +57,7 @@ const scoreColor = (s: number) => (s >= 75 ? colors.primaryContainer : s >= 50 ?
 export const AIAdvisorScreen: React.FC<Props> = ({ onBack, onNavigate }) => {
   const insets = useSafeAreaInsets();
   const [view, setView] = useState<'report' | 'settings'>('report');
+  const [tab, setTab] = useState<'checkup' | 'chat'>('checkup');
   const [config, setConfig] = useState<Config | null>(null);
   const [models, setModels] = useState<Record<string, { id: string; name: string }[]>>({});
   const [report, setReport] = useState<any>(null);   // the ai_advisor_reports row
@@ -169,8 +171,9 @@ export const AIAdvisorScreen: React.FC<Props> = ({ onBack, onNavigate }) => {
         aiProvider: provider,
         modelName: model || undefined,
         isEnabled: enabled,
-        monthlySipBudgetInr: sipBudget || undefined,
-        monthlyStockBudgetInr: stockBudget || undefined,
+        // null clears a budget; omitting it would keep the old value
+        monthlySipBudgetInr: sipBudget || null,
+        monthlyStockBudgetInr: stockBudget || null,
       };
       if (clearKey) body.apiKeyOverride = '';
       else if (apiKey.trim()) body.apiKeyOverride = apiKey.trim();
@@ -451,7 +454,19 @@ export const AIAdvisorScreen: React.FC<Props> = ({ onBack, onNavigate }) => {
       </View>
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color={colors.primary} /></View>
-      ) : view === 'settings' ? renderSettings() : renderReport()}
+      ) : view === 'settings' ? renderSettings() : (
+        <>
+          <View style={styles.tabs}>
+            {([['checkup', 'Check-up', 'insights'], ['chat', 'Chat', 'forum']] as const).map(([k, label, icon]) => (
+              <Pressable key={k} style={[styles.tab, tab === k && styles.tabOn]} onPress={() => setTab(k)}>
+                <MaterialIcons name={icon} size={18} color={tab === k ? colors.onPrimary : colors.onSurfaceVariant} />
+                <Text style={[styles.tabText, tab === k && { color: colors.onPrimary }]}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {tab === 'checkup' ? renderReport() : <AIChatPanel onOpenSettings={() => setView('settings')} />}
+        </>
+      )}
     </KeyboardAvoidingView>
   );
 };
@@ -461,6 +476,10 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
   headerBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceContainerLow },
   headerTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 20, color: colors.primary },
+  tabs: { flexDirection: 'row', gap: 8, marginHorizontal: 20, marginBottom: 8, padding: 4, borderRadius: 16, backgroundColor: colors.surfaceContainer },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 40, borderRadius: 12 },
+  tabOn: { backgroundColor: colors.primaryContainer },
+  tabText: { fontFamily: 'Inter_700Bold', fontSize: 14, color: colors.onSurfaceVariant },
   pad: { paddingHorizontal: 20, paddingBottom: 40, gap: 14 },
   // run card
   runCard: { backgroundColor: colors.primaryContainer, borderRadius: 24, padding: 22, alignItems: 'center', gap: 8 },

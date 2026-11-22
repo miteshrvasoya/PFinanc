@@ -1,6 +1,7 @@
 import { getHouseholdId } from '../../utils/request.js';
 import { Request, Response } from 'express';
 import { AIAdvisorService } from './aiAdvisor.service.js';
+import { AIChatService } from './aiChat.service.js';
 import { AIAdvisorScheduler } from './aiAdvisor.scheduler.js';
 import { AVAILABLE_MODELS, AIProviderType } from './providers/aiProviderFactory.js';
 
@@ -43,8 +44,9 @@ export class AIAdvisorController {
             : apiKeyOverride || null,
         scheduleCron,
         isEnabled,
-        monthlySipBudgetInr: monthlySipBudgetInr ? parseFloat(monthlySipBudgetInr) : undefined,
-        monthlyStockBudgetInr: monthlyStockBudgetInr ? parseFloat(monthlyStockBudgetInr) : undefined,
+        // Absent = keep; empty/0/null = clear; otherwise set
+        monthlySipBudgetInr: monthlySipBudgetInr === undefined ? undefined : (parseFloat(monthlySipBudgetInr) || (null as any)),
+        monthlyStockBudgetInr: monthlyStockBudgetInr === undefined ? undefined : (parseFloat(monthlyStockBudgetInr) || (null as any)),
       });
 
       return res.json({ success: true, data: AIAdvisorService.maskConfig(cfg) });
@@ -177,5 +179,47 @@ export class AIAdvisorController {
   // GET /api/ai-advisor/models
   static async getModels(req: Request, res: Response) {
     return res.json({ success: true, data: AVAILABLE_MODELS });
+  }
+
+  // ── Chat sessions ──────────────────────────────────────────────────────────
+
+  private static chatError(res: Response, err: any, code: string) {
+    const status = err?.status || (err?.name === 'LLMError' ? (err.code === 'AUTH' || err.code === 'NOT_CONFIGURED' ? 400 : 502) : 500);
+    return res.status(status).json({ success: false, error: { code: err?.code || code, message: err?.message || 'Something went wrong' } });
+  }
+
+  static async listChatSessions(req: Request, res: Response) {
+    try {
+      const data = await AIChatService.listSessions((req as any).user.id, getHouseholdId(req));
+      return res.json({ success: true, data });
+    } catch (err: any) { return AIAdvisorController.chatError(res, err, 'AI_CHAT_ERROR'); }
+  }
+
+  static async createChatSession(req: Request, res: Response) {
+    try {
+      const data = await AIChatService.createSession((req as any).user.id, getHouseholdId(req));
+      return res.status(201).json({ success: true, data });
+    } catch (err: any) { return AIAdvisorController.chatError(res, err, 'AI_CHAT_ERROR'); }
+  }
+
+  static async getChatSession(req: Request, res: Response) {
+    try {
+      const data = await AIChatService.getSession(req.params.id as string, (req as any).user.id, getHouseholdId(req));
+      return res.json({ success: true, data });
+    } catch (err: any) { return AIAdvisorController.chatError(res, err, 'AI_CHAT_ERROR'); }
+  }
+
+  static async deleteChatSession(req: Request, res: Response) {
+    try {
+      await AIChatService.deleteSession(req.params.id as string, (req as any).user.id, getHouseholdId(req));
+      return res.json({ success: true });
+    } catch (err: any) { return AIAdvisorController.chatError(res, err, 'AI_CHAT_ERROR'); }
+  }
+
+  static async sendChatMessage(req: Request, res: Response) {
+    try {
+      const data = await AIChatService.sendMessage(req.params.id as string, (req as any).user.id, getHouseholdId(req), req.body?.content);
+      return res.json({ success: true, data });
+    } catch (err: any) { return AIAdvisorController.chatError(res, err, 'AI_CHAT_ERROR'); }
   }
 }

@@ -47,7 +47,8 @@ interface AdvisorConfig {
   isEnabled: boolean;
   monthlySipBudgetInr?: number;
   monthlyStockBudgetInr?: number;
-  apiKeyOverride?: string;
+  apiKeyOverride?: string; // masked by the server, e.g. "••••abcd"
+  hasApiKey?: boolean;
 }
 
 type Tab = 'dashboard' | 'recommendations' | 'history' | 'settings';
@@ -164,7 +165,9 @@ const SettingsPanel: React.FC<{
   onSave: (updated: Partial<AdvisorConfig>) => Promise<void>;
   saving: boolean;
 }> = ({ config, models, onSave, saving }) => {
-  const [form, setForm] = useState({ ...config });
+  // The server only ever sends a masked key; the field starts empty and only carries a newly typed key.
+  const [form, setForm] = useState({ ...config, apiKeyOverride: '' });
+  const [clearKey, setClearKey] = useState(false);
   const [customCron, setCustomCron] = useState('');
   const [showKey, setShowKey] = useState(false);
 
@@ -179,7 +182,9 @@ const SettingsPanel: React.FC<{
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cron = isCustomCron ? customCron || form.scheduleCron : form.scheduleCron;
-    await onSave({ ...form, scheduleCron: cron });
+    await onSave({ ...form, scheduleCron: cron, apiKeyOverride: clearKey && !form.apiKeyOverride ? '' : form.apiKeyOverride || undefined });
+    setForm(f => ({ ...f, apiKeyOverride: '' }));
+    setClearKey(false);
   };
 
   return (
@@ -236,14 +241,26 @@ const SettingsPanel: React.FC<{
         </div>
 
         <div>
-          <label className="text-xs text-slate-400 font-medium mb-1 block">API Key Override <span className="text-slate-600">(optional — uses .env key if blank)</span></label>
+          <label className="text-xs text-slate-400 font-medium mb-1 block">API Key <span className="text-slate-600">(optional — uses the server's key if blank). Shared with the mobile app.</span></label>
+          {config.hasApiKey && !clearKey && (
+            <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2 mb-2 text-xs">
+              <span className="text-emerald-400">Key saved: <span className="font-mono">{config.apiKeyOverride}</span></span>
+              <button type="button" onClick={() => setClearKey(true)} className="text-rose-400 hover:text-rose-300 font-semibold">Remove</button>
+            </div>
+          )}
+          {clearKey && (
+            <div className="flex items-center justify-between text-xs text-rose-400 mb-2">
+              <span>The saved key will be removed when you save.</span>
+              <button type="button" onClick={() => setClearKey(false)} className="text-slate-300 hover:text-white font-semibold">Undo</button>
+            </div>
+          )}
           <div className="relative">
             <input
               id="ai-advisor-api-key"
               type={showKey ? 'text' : 'password'}
               value={form.apiKeyOverride || ''}
               onChange={e => setForm(f => ({ ...f, apiKeyOverride: e.target.value }))}
-              placeholder="sk-... (leave blank to use server default)"
+              placeholder={config.hasApiKey ? 'Paste a new key to replace the saved one' : 'sk-... (leave blank to use server default)'}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white pr-16 focus:border-indigo-500 focus:outline-none"
             />
             <button type="button" onClick={() => setShowKey(!showKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200">
@@ -411,11 +428,12 @@ export default function AIAdvisorPage() {
     const res = await api.updateAIAdvisorConfig({
       aiProvider: updated.aiProvider,
       modelName: updated.modelName,
-      apiKeyOverride: updated.apiKeyOverride || undefined,
+      apiKeyOverride: updated.apiKeyOverride, // undefined = keep saved key, '' = remove it
       scheduleCron: updated.scheduleCron,
       isEnabled: updated.isEnabled,
-      monthlySipBudgetInr: updated.monthlySipBudgetInr,
-      monthlyStockBudgetInr: updated.monthlyStockBudgetInr,
+      // null clears a budget; a missing value would be treated as "keep"
+      monthlySipBudgetInr: updated.monthlySipBudgetInr ?? null,
+      monthlyStockBudgetInr: updated.monthlyStockBudgetInr ?? null,
     });
     if (res.success) setConfig(res.data);
     setSaving(false);
