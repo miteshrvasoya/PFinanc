@@ -741,6 +741,11 @@ class ApiClient {
   async runSignals() { return this.request('/signals/run', { method: 'POST' }); }
   async runSignalBacktest(body: { symbols?: string[]; from?: string; to?: string } = {}) { return this.request('/signals/backtest', { method: 'POST', body: JSON.stringify(body) }); }
   async getLatestBacktest() { return this.request('/signals/backtest/latest'); }
+  async getAllSignals(label?: string) { return this.request(`/signals/all${label ? `?label=${label}` : ''}`); }
+  async getSignalRuns() { return this.request('/signals/runs'); }
+  async getSignalHistory(symbol: string) { return this.request(`/signals/${encodeURIComponent(symbol)}/history`); }
+  async getBacktestHistory() { return this.request('/signals/backtest/history'); }
+  async getBacktestById(id: string) { return this.request(`/signals/backtest/${id}`); }
   async getWatchlist() { return this.request('/watchlist'); }
   async addToWatchlist(symbol: string) { return this.request('/watchlist', { method: 'POST', body: JSON.stringify({ symbol }) }); }
   async removeFromWatchlist(symbol: string) { return this.request(`/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' }); }

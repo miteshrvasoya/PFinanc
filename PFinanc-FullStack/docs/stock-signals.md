@@ -101,6 +101,14 @@ slippage (`backtest.costs`). A same-bar stop and target resolves as a stop; a ga
 rate, average R, expectancy, profit factor, total return, CAGR vs Nifty 50 buy-and-hold, max drawdown and time invested.
 It uses stored candles only, so run the signals job first. **Results are past performance of this ruleset.**
 
+## What is stored
+
+Everything is kept so you can look back: each daily run and every signal in it (score, label, confidence, reasons,
+warnings, component scores, indicators, levels, data-quality notes), and each backtest with its parameters, the cost
+model used, skipped symbols, up to 5,000 trades and a 600-point equity curve. Read it through the history endpoints
+(or the **History** tab and the score history on a symbol). Web and mobile show the same screens: Top buys, All
+signals, Holdings, Watchlist, Backtest, History and Settings.
+
 ## Data model (migration `021_stock_signals.sql`)
 
 `candles`, `candle_sync_state`, `watchlist`, `signal_settings`, `signal_runs`, `signals`, `signal_alerts`, `backtest_runs`;

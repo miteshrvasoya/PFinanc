@@ -49,20 +49,40 @@ export async function runBacktestFor(householdId: string | null, userId: string 
 
   const result = runBacktest(candles, bench, cfg, { from: params.from, to: params.to });
   const trades = result.trades;
-  const equity = downsample(result.equityCurve, 300);
+  const equity = downsample(result.equityCurve, 600);
   const saved = await QueryHelper.queryOne<{ id: string; created_at: string }>(
     `INSERT INTO backtest_runs (household_id, created_by, params, symbols_count, metrics, trades, equity_curve) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, created_at`,
-    [householdId, userId, JSON.stringify({ symbols: [...candles.keys()], from: params.from ?? null, to: params.to ?? null, config: params.config ?? null }), candles.size,
-     JSON.stringify(result.metrics), JSON.stringify(trades.slice(-500)), JSON.stringify(equity)]
+    [householdId, userId, JSON.stringify({ symbols: [...candles.keys()], from: params.from ?? null, to: params.to ?? null, config: params.config ?? null, costs: cfg.backtest, issues, notes }), candles.size,
+     JSON.stringify(result.metrics), JSON.stringify(trades.slice(-5000)), JSON.stringify(equity)]
   );
-  return { id: saved!.id, createdAt: saved!.created_at, symbols: [...candles.keys()], metrics: result.metrics, trades: trades.slice(-200), tradesTotal: trades.length, equityCurve: equity, issues, notes, pastPerformanceNote: PAST_NOTE, disclaimer: DISCLAIMER };
+  return { id: saved!.id, createdAt: saved!.created_at, symbols: [...candles.keys()], metrics: result.metrics, trades: trades.slice(-5000), tradesTotal: trades.length, equityCurve: equity, issues, notes, pastPerformanceNote: PAST_NOTE, disclaimer: DISCLAIMER };
 }
 
+const shapeRun = (row: any, full: boolean) => ({
+  available: true, id: row.id, createdAt: row.created_at, symbolsCount: row.symbols_count,
+  symbols: row.params?.symbols ?? [], from: row.params?.from ?? null, to: row.params?.to ?? null,
+  costs: row.params?.costs ?? null, issues: row.params?.issues ?? [], notes: row.params?.notes ?? [],
+  metrics: row.metrics, ...(full ? { trades: row.trades, tradesTotal: (row.trades as any[]).length, equityCurve: row.equity_curve } : {}),
+  pastPerformanceNote: PAST_NOTE, disclaimer: DISCLAIMER,
+});
+
 export async function latestBacktest(householdId: string) {
-  const row = await QueryHelper.queryOne<any>(`SELECT id, created_at, params, symbols_count, metrics, trades, equity_curve FROM backtest_runs WHERE household_id = $1 ORDER BY created_at DESC LIMIT 1`, [householdId]);
+  const row = await QueryHelper.queryOne<any>(`SELECT * FROM backtest_runs WHERE household_id = $1 ORDER BY created_at DESC LIMIT 1`, [householdId]);
   if (!row) return { available: false, pastPerformanceNote: PAST_NOTE, disclaimer: DISCLAIMER };
-  return {
-    available: true, id: row.id, createdAt: row.created_at, symbolsCount: row.symbols_count, params: row.params, metrics: row.metrics,
-    trades: (row.trades as any[]).slice(-50), equityCurve: row.equity_curve, pastPerformanceNote: PAST_NOTE, disclaimer: DISCLAIMER,
-  };
+  return shapeRun(row, true);
+}
+
+/** Every saved backtest, newest first, with headline metrics only. */
+export async function backtestHistory(householdId: string, limit = 50) {
+  const rows = await QueryHelper.query<any>(
+    `SELECT id, created_at, params, symbols_count, metrics FROM backtest_runs WHERE household_id = $1 ORDER BY created_at DESC LIMIT $2`, [householdId, Math.min(Math.max(limit, 1), 200)]
+  );
+  return { items: rows.map((r) => shapeRun({ ...r, trades: [], equity_curve: [] }, false)), pastPerformanceNote: PAST_NOTE, disclaimer: DISCLAIMER };
+}
+
+export async function backtestById(householdId: string, id: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw httpError(404, 'NOT_FOUND', 'Backtest not found.');
+  const row = await QueryHelper.queryOne<any>(`SELECT * FROM backtest_runs WHERE household_id = $1 AND id = $2`, [householdId, id]);
+  if (!row) throw httpError(404, 'NOT_FOUND', 'Backtest not found.');
+  return shapeRun(row, true);
 }
