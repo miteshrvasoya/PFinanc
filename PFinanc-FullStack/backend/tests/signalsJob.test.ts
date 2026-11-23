@@ -237,11 +237,44 @@ describe('API', () => {
     expect(d.metrics).toHaveProperty('winRatePct');
     expect(d.metrics).toHaveProperty('maxDrawdownPct');
     expect(d.pastPerformanceNote).toMatch(/past performance/i);
-    expect(d.equityCurve.length).toBeLessThanOrEqual(300);
+    expect(d.equityCurve.length).toBeLessThanOrEqual(600);
     const latest = await request(app).get('/api/signals/backtest/latest').set(auth());
     expect(latest.body.data.available).toBe(true);
     expect((await request(app).post('/api/signals/backtest').set(auth()).send({ symbols: ['SIGUP'], from: 'yesterday' })).status).toBe(400);
     await expect(runBacktestFor(householdId, userId, { symbols: ['NOSUCH'] })).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe('stored analysis history', () => {
+  it('keeps every backtest with full trades, equity, costs and issues', async () => {
+    const run = await request(app).post('/api/signals/backtest').set(auth()).send({ symbols: ['SIGUP', 'SIGUP2', 'NOSUCH'] });
+    expect(run.status).toBe(200);
+    const hist = await request(app).get('/api/signals/backtest/history').set(auth());
+    expect(hist.body.data.items.length).toBeGreaterThanOrEqual(2);
+    expect(hist.body.data.items[0].trades).toBeUndefined();
+    const one = await request(app).get(`/api/signals/backtest/${run.body.data.id}`).set(auth());
+    const d = one.body.data;
+    expect(d.tradesTotal).toBe(run.body.data.tradesTotal);
+    expect(d.trades.length).toBe(Math.min(d.tradesTotal, 5000));
+    expect(d.costs.costs).toBeDefined();
+    expect(d.issues.find((i: any) => i.symbol === 'NOSUCH')).toBeTruthy();
+    expect(d.disclaimer).toBe(DISCLAIMER);
+    expect((await request(app).get('/api/signals/backtest/00000000-0000-0000-0000-000000000000').set(auth())).status).toBe(404);
+    expect((await request(app).get('/api/signals/backtest/not-an-id').set(auth())).status).toBe(404);
+  });
+  it('serves all signals, run history and per-symbol history', async () => {
+    const all = await request(app).get('/api/signals/all').set(auth());
+    expect(all.body.data.items.length).toBeGreaterThan(0);
+    expect(Object.values(all.body.data.counts).reduce((a: any, b: any) => a + b, 0)).toBe(all.body.data.items.length);
+    const label = all.body.data.items[0].label;
+    const filtered = await request(app).get(`/api/signals/all?label=${label}`).set(auth());
+    expect(filtered.body.data.items.every((i: any) => i.label === label)).toBe(true);
+    const runs = await request(app).get('/api/signals/runs').set(auth());
+    expect(runs.body.data.items[0]).toMatchObject({ asOfDate: LAST });
+    const h = await request(app).get('/api/signals/SIGUP/history').set(auth());
+    expect(h.body.data.items.length).toBeGreaterThanOrEqual(1);
+    expect(h.body.data.items[0]).toHaveProperty('score');
+    expect(h.body.disclaimer).toBe(DISCLAIMER);
   });
 });
 

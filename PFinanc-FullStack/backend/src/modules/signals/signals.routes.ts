@@ -3,7 +3,7 @@ import { authenticate } from '../../middleware/auth.js';
 import { isPrivilegedRole, requireHouseholdAccess } from '../../middleware/rbac.js';
 import { getHouseholdId } from '../../utils/request.js';
 import { AngelOneError, describeAngelOneError } from '../angelone/angelOneClient.js';
-import { latestBacktest, runBacktestFor } from './backtest.service.js';
+import { backtestById, backtestHistory, latestBacktest, runBacktestFor } from './backtest.service.js';
 import { SignalsService } from './signals.service.js';
 import { WatchlistService } from './watchlist.service.js';
 import { DISCLAIMER } from './types.js';
@@ -59,6 +59,11 @@ signalsRouter.post('/backtest', wrap(async (req) => {
   return runBacktestFor(getHouseholdId(req), req.user!.id, { symbols: Array.isArray(symbols) ? symbols.map(String) : undefined, from, to, config });
 }));
 signalsRouter.get('/backtest/latest', wrap((req) => latestBacktest(getHouseholdId(req))));
+signalsRouter.get('/backtest/history', wrap((req) => backtestHistory(getHouseholdId(req), parseInt(String(req.query.limit)) || 50)));
+signalsRouter.get('/backtest/:id', wrap((req) => backtestById(getHouseholdId(req), String(req.params.id))));
+signalsRouter.get('/all', wrap((req) => SignalsService.allSignals(getHouseholdId(req), req.query.label ? String(req.query.label).toUpperCase() : undefined)));
+signalsRouter.get('/runs', wrap((req) => SignalsService.runs(getHouseholdId(req), parseInt(String(req.query.limit)) || 30)));
+signalsRouter.get('/:symbol/history', wrap((req) => SignalsService.symbolHistory(getHouseholdId(req), String(req.params.symbol), parseInt(String(req.query.days)) || 120)));
 // Keep the parametrised route last so it does not swallow the fixed paths above.
 signalsRouter.get('/:symbol', wrap((req) => SignalsService.symbolDetail(getHouseholdId(req), req.user!.id, String(req.params.symbol))));
 

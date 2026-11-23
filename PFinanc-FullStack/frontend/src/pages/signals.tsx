@@ -35,7 +35,7 @@ const Levels: React.FC<{ l: any; size?: any }> = ({ l, size }) => l ? (
   </div>
 ) : null;
 
-type Tab = 'top' | 'holdings' | 'watchlist' | 'backtest' | 'settings';
+type Tab = 'top' | 'all' | 'holdings' | 'watchlist' | 'backtest' | 'history' | 'settings';
 
 function SignalsPage() {
   const router = useRouter();
@@ -48,6 +48,7 @@ function SignalsPage() {
   const [detail, setDetail] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
+  const [openBt, setOpenBt] = useState<any>(null);
   const poll = useRef<any>(null);
 
   const loadAll = useCallback(async () => {
@@ -82,7 +83,7 @@ function SignalsPage() {
   if (detail) return <Detail d={detail} onBack={() => setDetail(null)} />;
 
   const stale = status?.lastRun && (Date.now() - new Date(status.lastRun.updatedAt).getTime()) > 4 * 86_400_000;
-  const tabs: Array<[Tab, string]> = [['top', 'Top buys'], ['holdings', 'My holdings'], ['watchlist', 'Watchlist'], ['backtest', 'Backtest'], ['settings', 'Settings']];
+  const tabs: Array<[Tab, string]> = [['top', 'Top buys'], ['all', 'All signals'], ['holdings', 'My holdings'], ['watchlist', 'Watchlist'], ['backtest', 'Backtest'], ['history', 'History'], ['settings', 'Settings']];
 
   return (
     <AppLayout>
@@ -110,9 +111,11 @@ function SignalsPage() {
         {detailLoading && <p className="text-sm text-slate-400 flex items-center gap-2"><RefreshCw className="w-4 h-4 animate-spin" /> Loading…</p>}
 
         {tab === 'top' && <TopBuys data={top} onOpen={openDetail} />}
+        {tab === 'all' && <AllSignals onOpen={openDetail} />}
         {tab === 'holdings' && <Holdings data={holdings} onOpen={openDetail} />}
         {tab === 'watchlist' && <Watchlist canEdit={canEdit} onOpen={openDetail} onChanged={loadAll} />}
-        {tab === 'backtest' && <Backtest canEdit={canEdit} />}
+        {tab === 'backtest' && <Backtest canEdit={canEdit} preset={openBt} />}
+        {tab === 'history' && <HistoryTab onOpenBacktest={(b) => { setOpenBt(b); setTab('backtest'); }} />}
         {tab === 'settings' && <SettingsPanel canEdit={canEdit} onSaved={loadAll} />}
         <p className="text-[11px] text-slate-500 text-center pt-2">{DISCLAIMER}</p>
       </div>
@@ -172,6 +175,24 @@ const Holdings: React.FC<{ data: any; onOpen: (s: string) => void }> = ({ data, 
   );
 };
 
+const SignalHistory: React.FC<{ symbol: string }> = ({ symbol }) => {
+  const [items, setItems] = useState<any[]>([]);
+  useEffect(() => { api.getSignalHistory(symbol).then((r) => { if (r.success) setItems(r.data.items); }); }, [symbol]);
+  if (items.length < 2) return null;
+  const W = 800, H = 90, lo = -100, hi = 100;
+  const y = (v: number) => 6 + (1 - (v - lo) / (hi - lo)) * (H - 12);
+  const d = items.map((p, i) => `${i ? 'L' : 'M'}${(i / (items.length - 1)) * W},${y(p.score)}`).join(' ');
+  return (
+    <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-2">
+      <p className="text-sm font-semibold text-white">Score history <span className="text-xs text-slate-500 font-normal">({items.length} stored daily runs)</span></p>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto"><line x1="0" x2={W} y1={y(0)} y2={y(0)} stroke="#334155" strokeDasharray="3 3" /><path d={d} fill="none" stroke="#818cf8" strokeWidth="2" /></svg>
+      <div className="max-h-40 overflow-y-auto text-xs divide-y divide-slate-800">
+        {[...items].reverse().slice(0, 30).map((p) => <div key={p.date} className="flex justify-between py-1.5"><span className="text-slate-400">{p.date}</span><span className="text-slate-300">score {p.score}</span><Badge label={p.label} text={p.labelText} /></div>)}
+      </div>
+    </div>
+  );
+};
+
 const Detail: React.FC<{ d: any; onBack: () => void }> = ({ d, onBack }) => (
   <AppLayout>
     <div className="max-w-5xl mx-auto p-4 md:p-6 space-y-4">
@@ -199,6 +220,7 @@ const Detail: React.FC<{ d: any; onBack: () => void }> = ({ d, onBack }) => (
           {d.holding.longTermNotes?.map((n: string, i: number) => <p key={i} className="text-sky-300 text-xs">{n}</p>)}
         </div>}
       </>}
+      <SignalHistory symbol={d.symbol} />
       {d.dataNotes?.length > 0 && !d.dataUnreliable && <p className="text-xs text-slate-500">Data notes: {d.dataNotes.join('; ')}</p>}
       <p className="text-[11px] text-slate-500 text-center">{DISCLAIMER}</p>
     </div>
@@ -237,11 +259,14 @@ const Watchlist: React.FC<{ canEdit: boolean; onOpen: (s: string) => void; onCha
 
 const Stat: React.FC<{ k: string; v: any }> = ({ k, v }) => <div className="bg-slate-800/50 rounded-lg px-3 py-2"><p className="text-slate-500 text-xs">{k}</p><p className="text-white font-semibold text-sm">{v ?? '–'}</p></div>;
 
-const Backtest: React.FC<{ canEdit: boolean }> = ({ canEdit }) => {
+const Backtest: React.FC<{ canEdit: boolean; preset?: any }> = ({ canEdit, preset }) => {
   const [res, setRes] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  useEffect(() => { api.getLatestBacktest().then((r) => { if (r.success && r.data.available) setRes(r.data); }); }, []);
+  useEffect(() => {
+    if (preset) { api.getBacktestById(preset.id).then((r) => { if (r.success) setRes(r.data); }); return; }
+    api.getLatestBacktest().then((r) => { if (r.success && r.data.available) setRes(r.data); });
+  }, [preset]);
   const run = async () => {
     setBusy(true); setErr('');
     const r = await api.runSignalBacktest({});
@@ -263,8 +288,70 @@ const Backtest: React.FC<{ canEdit: boolean }> = ({ canEdit }) => {
           <Stat k="CAGR" v={`${m.cagrPct}%`} /><Stat k="Nifty 50 CAGR" v={m.benchmarkCagrPct == null ? null : `${m.benchmarkCagrPct}%`} /><Stat k="Max drawdown" v={`${m.maxDrawdownPct}%`} /><Stat k="Profit factor" v={m.profitFactor} />
         </div>
         {eq.length > 2 && <EquityLine values={eq} />}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <Stat k="Avg win (R)" v={m.avgWinR} /><Stat k="Avg loss (R)" v={m.avgLossR} /><Stat k="Total return" v={`${m.totalReturnPct}%`} /><Stat k="Time invested" v={`${m.exposurePct}%`} />
+          <Stat k="Costs paid" v={inr(m.totalCosts)} /><Stat k="Wins / losses" v={`${m.wins} / ${m.losses}`} /><Stat k="Nifty 50 return" v={m.benchmarkTotalReturnPct == null ? null : `${m.benchmarkTotalReturnPct}%`} /><Stat k="Years" v={m.years} />
+        </div>
+        {res.symbols?.length > 0 && <p className="text-xs text-slate-500">Symbols: {res.symbols.join(', ')}</p>}
+        {res.costs?.costs && <p className="text-xs text-slate-500">Costs modelled: brokerage {(res.costs.costs.brokeragePct * 100).toFixed(3)}% (cap ₹{res.costs.costs.brokerageCapInr}), STT {(res.costs.costs.sttPct * 100).toFixed(2)}%, slippage {(res.costs.costs.slippagePct * 100).toFixed(2)}%.</p>}
         {res.notes?.map((n: string, i: number) => <p key={i} className="text-xs text-amber-300">{n}</p>)}
+        {res.issues?.length > 0 && <details className="text-xs text-slate-400"><summary className="cursor-pointer">Skipped symbols ({res.issues.length})</summary><ul className="mt-1">{res.issues.map((x: any, i: number) => <li key={i}>{x.symbol}: {x.message}</li>)}</ul></details>}
+        {res.trades?.length > 0 && (
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-3 overflow-x-auto">
+            <p className="text-xs text-slate-500 mb-2">All trades ({res.tradesTotal ?? res.trades.length}), newest first</p>
+            <table className="w-full text-xs text-left"><thead className="text-slate-500"><tr><th className="py-1 pr-3">Symbol</th><th className="pr-3">Entry</th><th className="pr-3">Exit</th><th className="pr-3">Why</th><th className="pr-3 text-right">R</th><th className="text-right">P&amp;L</th></tr></thead>
+              <tbody>{[...res.trades].reverse().map((t: any, i: number) => (
+                <tr key={i} className="border-t border-slate-800 text-slate-300"><td className="py-1 pr-3 font-semibold">{t.symbol}</td><td className="pr-3">{t.entryDate} @ {t.entryPrice}</td><td className="pr-3">{t.exitDate} @ {t.exitPrice}</td><td className="pr-3">{String(t.reason).replace('_', ' ')}</td><td className={`pr-3 text-right ${t.rMultiple >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{t.rMultiple}</td><td className={`text-right ${t.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{inr(t.pnl)}</td></tr>
+              ))}</tbody></table>
+          </div>
+        )}
       </> : !busy && <p className="text-sm text-slate-400 bg-slate-900/50 border border-slate-800 rounded-xl p-6 text-center">No backtest yet. Run the signals update first so price history is stored, then run a backtest.</p>}
+    </div>
+  );
+};
+
+const AllSignals: React.FC<{ onOpen: (s: string) => void }> = ({ onOpen }) => {
+  const [data, setData] = useState<any>(null);
+  const [label, setLabel] = useState('');
+  useEffect(() => { api.getAllSignals(label || undefined).then((r) => { if (r.success) setData(r.data); }); }, [label]);
+  if (!data) return <p className="text-slate-500 text-sm">Loading…</p>;
+  const labels = ['STRONG_BUY', 'BUY', 'WATCH', 'HOLD', 'REDUCE', 'SELL', 'AVOID'];
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-1.5">
+        <button onClick={() => setLabel('')} className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${!label ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}>All</button>
+        {labels.map((l) => <button key={l} onClick={() => setLabel(l)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${label === l ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}>{l.replace('_', ' ')} ({data.counts?.[l] ?? 0})</button>)}
+      </div>
+      {data.items.length === 0 ? <p className="text-slate-400 text-sm bg-slate-900/50 border border-slate-800 rounded-xl p-6 text-center">No signals{label ? ' with this label' : ''} yet.</p> : (
+        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl divide-y divide-slate-800">
+          {data.items.map((it: any) => (
+            <button key={it.symbol} onClick={() => onOpen(it.symbol)} className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-800/40">
+              <div><p className="text-white font-semibold text-sm">{it.symbol}</p><p className="text-xs text-slate-500">Close {inr(it.price)} · RSI {it.rsi ?? '–'}{it.liquid === false ? ' · thinly traded' : ''}</p></div>
+              <div className="flex items-center gap-3"><span className="text-xs text-slate-400">{it.score}</span><Badge label={it.label} text={it.labelText} /></div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const HistoryTab: React.FC<{ onOpenBacktest: (b: any) => void }> = ({ onOpenBacktest }) => {
+  const [runs, setRuns] = useState<any[]>([]);
+  const [bts, setBts] = useState<any[]>([]);
+  useEffect(() => { api.getSignalRuns().then((r) => r.success && setRuns(r.data.items)); api.getBacktestHistory().then((r) => r.success && setBts(r.data.items)); }, []);
+  return (
+    <div className="space-y-5">
+      <div><p className="text-sm font-semibold text-white mb-2">Daily runs</p>
+        {runs.length === 0 ? <p className="text-xs text-slate-500">No runs stored yet.</p> : <div className="bg-slate-900/60 border border-slate-800 rounded-2xl divide-y divide-slate-800">
+          {runs.map((r) => <details key={r.id} className="px-4 py-2.5 text-xs"><summary className="cursor-pointer flex justify-between gap-2 text-slate-300"><span className="font-semibold">{r.asOfDate}</span><span>{r.scored}/{r.universe} scored · {r.skipped} skipped</span><span className={r.status === 'COMPLETED' ? 'text-emerald-400' : 'text-amber-400'}>{r.status}</span></summary>
+            <p className="text-slate-500 mt-1">{r.trigger} · finished {ago(r.completedAt)}</p>
+            {(r.issues || []).map((x: any, i: number) => <p key={i} className="text-slate-400">{x.symbol}: {x.message}</p>)}</details>)}
+        </div>}</div>
+      <div><p className="text-sm font-semibold text-white mb-2">Saved backtests <span className="text-xs text-slate-500 font-normal">(past performance)</span></p>
+        {bts.length === 0 ? <p className="text-xs text-slate-500">No backtests saved yet.</p> : <div className="bg-slate-900/60 border border-slate-800 rounded-2xl divide-y divide-slate-800">
+          {bts.map((b) => <button key={b.id} onClick={() => onOpenBacktest(b)} className="w-full px-4 py-2.5 text-left text-xs hover:bg-slate-800/40 flex justify-between gap-2 text-slate-300"><span>{ago(b.createdAt)} · {b.symbolsCount} symbols</span><span>{b.metrics.trades} trades · win {b.metrics.winRatePct}% · CAGR {b.metrics.cagrPct}%</span></button>)}
+        </div>}</div>
     </div>
   );
 };

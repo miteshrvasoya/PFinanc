@@ -239,6 +239,40 @@ export class SignalsService {
     };
   }
 
+
+  /** Every signal from the latest run (all labels), for the screener view. Optional label filter. */
+  static async allSignals(householdId: string, label?: string) {
+    const { config } = await this.getSettings(householdId);
+    const run = await this.latestRun(householdId);
+    if (!run) return { asOfDate: null, updatedAt: null, items: [], counts: {}, disclaimer: DISCLAIMER };
+    const rows = await QueryHelper.query<any>(
+      `SELECT s.*, to_char(s.as_of_date,'YYYY-MM-DD') AS as_of_date_text FROM signals s WHERE s.run_id = $1 ORDER BY s.score DESC`, [run.id]
+    );
+    const counts: Record<string, number> = {};
+    for (const r of rows) counts[r.label] = (counts[r.label] || 0) + 1;
+    const shown = label ? rows.filter((r) => r.label === label) : rows;
+    return { asOfDate: run.as_of_date, updatedAt: run.completed_at, items: shown.map((r) => this.shape(r, config)), counts, dataIssues: run.errors, disclaimer: DISCLAIMER };
+  }
+
+  /** History of daily runs (when they ran, what they covered, and the issues recorded). */
+  static async runs(householdId: string, limit = 30) {
+    const rows = await QueryHelper.query<any>(
+      `SELECT id, to_char(as_of_date,'YYYY-MM-DD') AS as_of_date, status, trigger, universe_size, scored, skipped, errors, started_at, completed_at
+       FROM signal_runs WHERE household_id = $1 ORDER BY as_of_date DESC LIMIT $2`, [householdId, Math.min(Math.max(limit, 1), 200)]
+    );
+    return { items: rows.map((r) => ({ id: r.id, asOfDate: r.as_of_date, status: r.status, trigger: r.trigger, universe: r.universe_size, scored: r.scored, skipped: r.skipped, issues: r.errors, startedAt: r.started_at, completedAt: r.completed_at })), disclaimer: DISCLAIMER };
+  }
+
+  /** How one symbol's signal has changed day by day across stored runs. */
+  static async symbolHistory(householdId: string, symbol: string, days = 120) {
+    const sym = baseSymbol(symbol);
+    const rows = await QueryHelper.query<any>(
+      `SELECT to_char(as_of_date,'YYYY-MM-DD') AS d, label, score, confidence, entry_low, entry_high, stop, target1, target2, trade_valid, reasons
+       FROM signals WHERE household_id = $1 AND symbol = $2 ORDER BY as_of_date DESC LIMIT $3`, [householdId, sym, Math.min(Math.max(days, 1), 500)]
+    );
+    return { symbol: sym, items: rows.reverse().map((r) => ({ date: r.d, label: r.label, labelText: LABEL_TEXT[r.label as SignalLabel], score: num(r.score), confidence: num(r.confidence), entryLow: num(r.entry_low), entryHigh: num(r.entry_high), stop: num(r.stop), target1: num(r.target1), target2: num(r.target2), tradeValid: r.trade_valid, reasons: r.reasons })), disclaimer: DISCLAIMER };
+  }
+
   /** Signals for what you hold, evaluated fresh from stored candles, with trailing stop, P&L and the 12-month prompt. */
   static async holdingsSignals(householdId: string, userId: string) {
     const { config: cfg } = await this.getSettings(householdId);

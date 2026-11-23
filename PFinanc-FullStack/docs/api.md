@@ -91,6 +91,11 @@ See [stock-signals.md](stock-signals.md) for the rules.
 | POST | `/api/signals/run` | Owner/admin. Starts a background update |
 | POST | `/api/signals/backtest` | Owner/admin. `{ symbols?, from?, to?, config? }` |
 | GET | `/api/signals/backtest/latest` | Most recent saved backtest |
+| GET | `/api/signals/all?label=` | Every signal from the latest run, with label counts |
+| GET | `/api/signals/runs` | History of daily runs and the issues recorded |
+| GET | `/api/signals/backtest/history` | All saved backtests (headline metrics) |
+| GET | `/api/signals/backtest/:id` | One saved backtest with every trade, equity curve, costs, skipped symbols |
+| GET | `/api/signals/:symbol/history` | Stored daily score/label/levels for one symbol |
 | GET | `/api/signals/:symbol` | Detail with chart series |
 | GET / POST | `/api/watchlist` | List / add `{ symbol }` |
 | DELETE | `/api/watchlist/:symbolOrId` | Remove |
