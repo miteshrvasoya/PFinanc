@@ -53,3 +53,25 @@ All API endpoints return standard JSON responses with HTTP status codes and unif
 ## 6. Broker Statement Ingestion
 * `POST /api/investments/imports/preview` — Upload broker tradebook CSV, match securities, detect duplicates, and preview trades
 * `POST /api/investments/imports/:id/commit` — Commit validated investment trades to the ledger atomically
+
+
+## AI advisor chat
+
+All under `/api/ai-advisor`, authenticated like the rest of the API.
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /chat/sessions` | List your chats |
+| `POST /chat/message` | `{ content, sessionId?, focus? }`. Without `sessionId` a new chat is started. `focus` is `general`, `investments` or `spending` |
+| `GET /chat/sessions/:id` | A chat with its messages |
+| `PATCH /chat/sessions/:id` | Rename `{ title }` |
+| `POST /chat/sessions/:id/regenerate` | Replace the last answer |
+| `DELETE /chat/sessions/:id` | Delete a chat |
+
+## MCP
+
+See [mcp.md](mcp.md) for the MCP endpoint (`POST /mcp`) and the connection management API (`/api/mcp/*`).
+
+## Angel One
+
+See [angelone.md](angelone.md) for the `/api/integrations/angelone/*` endpoints.

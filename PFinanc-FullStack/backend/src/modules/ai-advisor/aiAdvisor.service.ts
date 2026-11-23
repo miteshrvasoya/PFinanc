@@ -4,6 +4,7 @@ import { PortfolioService } from '../investments/portfolio/portfolio.service.js'
 import { MarketDataService } from '../investments/prices/marketData.service.js';
 import { FinancialInsightsService } from '../analytics/financialInsights.service.js';
 import { toLocalDateString } from '../../utils/date.js';
+import { PortfolioSignalsService } from './portfolioSignals.service.js';
 import { AIProviderFactory, AIProviderType, DEFAULT_MODELS } from './providers/aiProviderFactory.js';
 import { ChatMessage, ChatResponse, IAIProvider, LLMError } from './providers/aiProvider.interface.js';
 import { AdvisorReport, REPORT_JSON_SCHEMA, describeIssues, extractJson, reportValidator } from './reportSchema.js';
@@ -408,6 +409,17 @@ export class AIAdvisorService {
         assetAllocation: portfolio.assetAllocation.map((a) => ({ label: a.label, amount: Math.round(a.amount), percent: a.percent })),
         holdings: activeHoldings,
       },
+      // Rule-based observations (overweight, deep losses, lots turning long-term, gaps) plus holding periods.
+      investmentSignals: (() => {
+        const sig = PortfolioSignalsService.fromData(holdings, portfolio, 'personal');
+        return {
+          concentration: sig.concentration,
+          flags: sig.flags,
+          reviewForReducing: sig.reviewForReducing,
+          reviewForAdding: sig.reviewForAdding,
+          holdingPeriods: sig.positions.slice(0, 25).map((p) => ({ symbol: p.symbol, oldestLotDays: p.oldestLotDays, longTermQuantity: p.longTermQuantity, shortTermQuantity: p.shortTermQuantity })),
+        };
+      })(),
       investmentBudget: {
         monthlySipInr: cfg.monthlySipBudgetInr || null,
         monthlyStockInr: cfg.monthlyStockBudgetInr || null,
@@ -419,7 +431,7 @@ export class AIAdvisorService {
 
   // ── Market Context ────────────────────────────────────────────────────────────
 
-  private static async fetchMarketContext() {
+  static async fetchMarketContext() {
     try {
       const response = await fetch(
         'https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5ENSEI,%5EBSESN&fields=regularMarketPrice,regularMarketChangePercent',
@@ -454,6 +466,7 @@ How to work:
 - Cover the whole picture, in this order of importance: cash flow and savings rate, emergency fund, debt and EMIs, spending patterns and budgets, then investments and allocation. A household with thin savings or high-interest debt needs that addressed before any investment idea.
 - "precomputedSignals" are rule-based observations computed from the same data. Use them as starting points: confirm, prioritise, and explain them; do not simply repeat them.
 - Respect data quality. If dataQuality shows flagged, uncategorized, or draft entries, or holdings have stale prices, say how that limits your conclusions in "dataCaveats" and lower confidence accordingly. Do not treat uncategorized spending as a category the person chose.
+- "investmentSignals" lists rule-based flags for the holdings (overweight positions, deep losses, big winners, lots about to turn long-term, missing diversification) with "reviewForReducing" and "reviewForAdding". Turn the relevant ones into HOLD / SELL / REBALANCE recommendations worded as "consider ... because ..." with the evidence. When a lot is close to the 12-month mark, mention that waiting may lower tax on a sale; for a deep loss mention it may offset gains. Never present a sale as certain or urgent without evidence, and say the decision is the user's.
 - Investment suggestions: stay at the level of asset classes and fund categories (for example "large-cap index fund", "short-duration debt fund", "ELSS for 80C") unless a specific security already appears in the holdings. Do not predict returns. Only fill monthlySipPlan / monthlyStockPlan when the matching monthly budget is provided, and keep their totals within that budget; otherwise return empty arrays.
 - Indian context: consider emergency funds in liquid instruments, EMI-to-income limits, 80C / 80CCD(1B) / 80D where relevant, LTCG/STCG on equity, and the difference between saving and investing. Mention tax ideas as things to check, not as definitive advice.
 - Scores are integers from 0 to 100: financialHealthScore overall, and scoreBreakdown for cashflow, liquidity, debt, and investments. If an area has no data, score it 50 and say so in dataCaveats. riskAssessment describes the investment portfolio; use "Insufficient data" when there are no confirmed holdings.

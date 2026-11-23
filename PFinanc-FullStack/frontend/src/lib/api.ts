@@ -718,6 +718,91 @@ class ApiClient {
     return this.request('/ai-advisor/notifications/read-all', { method: 'POST' });
   }
 
+  // ── Price charts ──
+  async getPriceChart(symbol: string, range: string, view: 'personal' | 'household') {
+    return this.request(`/investments/chart/${encodeURIComponent(symbol)}?range=${range}&view=${view}`);
+  }
+
+  async setHoldingBuyDate(symbol: string, date: string) {
+    return this.request(`/investments/holdings/${encodeURIComponent(symbol)}/buy-date`, { method: 'PUT', body: JSON.stringify({ date }) });
+  }
+
+  async clearHoldingBuyDate(symbol: string) {
+    return this.request(`/investments/holdings/${encodeURIComponent(symbol)}/buy-date`, { method: 'DELETE' });
+  }
+
+  // ── Angel One (stocks & ETFs; mutual funds are not offered by SmartAPI) ──
+  async getAngelOneStatus() {
+    return this.request('/integrations/angelone/status');
+  }
+
+  async testAngelOne() {
+    return this.request('/integrations/angelone/test', { method: 'POST' });
+  }
+
+  async previewAngelOneHoldings() {
+    return this.request('/integrations/angelone/holdings');
+  }
+
+  async syncAngelOneHoldings() {
+    return this.request('/integrations/angelone/holdings/sync', { method: 'POST' });
+  }
+
+  async syncAngelOnePrices() {
+    return this.request('/integrations/angelone/prices/sync', { method: 'POST' });
+  }
+
+  async getAngelOneQuotes(symbols: string[], exchange: 'NSE' | 'BSE' = 'NSE') {
+    return this.request(`/integrations/angelone/quotes?symbols=${encodeURIComponent(symbols.join(','))}&exchange=${exchange}`);
+  }
+
+  // ── AI chat ──
+  async listAIChatSessions() {
+    return this.request('/ai-advisor/chat/sessions');
+  }
+
+  async getAIChatSession(id: string) {
+    return this.request(`/ai-advisor/chat/sessions/${id}`);
+  }
+
+  /** Send a message; without sessionId a new chat is started automatically. */
+  async sendAIChatMessage(data: { content: string; sessionId?: string; focus?: 'general' | 'investments' | 'spending' }) {
+    return this.request('/ai-advisor/chat/message', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async regenerateAIChat(id: string) {
+    return this.request(`/ai-advisor/chat/sessions/${id}/regenerate`, { method: 'POST' });
+  }
+
+  async renameAIChatSession(id: string, title: string) {
+    return this.request(`/ai-advisor/chat/sessions/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) });
+  }
+
+  async deleteAIChatSession(id: string) {
+    return this.request(`/ai-advisor/chat/sessions/${id}`, { method: 'DELETE' });
+  }
+
+  // ── MCP (connect external AI assistants) ──
+  async getMcpSetup() {
+    return this.request('/mcp/setup');
+  }
+
+  async listMcpConnections() {
+    return this.request('/mcp/connections');
+  }
+
+  async createMcpConnection(data: { name: string; scopes: string[]; expiresInDays?: number | null }) {
+    return this.request('/mcp/connections', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async revokeMcpConnection(id: string) {
+    return this.request(`/mcp/connections/${id}`, { method: 'DELETE' });
+  }
+
+  async getMcpActivity(limit = 30) {
+    return this.request(`/mcp/activity?limit=${limit}`);
+  }
+
   async getAIAdvisorModels() {
     return this.request('/ai-advisor/models');
   }

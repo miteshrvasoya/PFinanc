@@ -28,7 +28,10 @@ aiAdvisorRouter.post('/notifications/read-all', AIAdvisorController.markAllRead)
 // Chat sessions
 aiAdvisorRouter.get('/chat/sessions', AIAdvisorController.listChatSessions);
 aiAdvisorRouter.post('/chat/sessions', AIAdvisorController.createChatSession);
+aiAdvisorRouter.post('/chat/message', AIAdvisorController.sendChatMessageAuto);
 aiAdvisorRouter.get('/chat/sessions/:id', AIAdvisorController.getChatSession);
+aiAdvisorRouter.patch('/chat/sessions/:id', AIAdvisorController.renameChatSession);
+aiAdvisorRouter.post('/chat/sessions/:id/regenerate', AIAdvisorController.regenerateChatMessage);
 aiAdvisorRouter.delete('/chat/sessions/:id', AIAdvisorController.deleteChatSession);
 aiAdvisorRouter.post('/chat/sessions/:id/messages', AIAdvisorController.sendChatMessage);
 

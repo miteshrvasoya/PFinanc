@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { formatINR, formatDate } from '../../lib/formatters';
+import { PriceChart } from './PriceChart';
 import {
   X,
   TrendingUp,
@@ -110,6 +111,10 @@ export const SecurityDetailModal: React.FC<SecurityDetailModalProps> = ({
             </span>
           </div>
         </div>
+
+
+        {/* Price chart (default: one day) */}
+        {holding.security_type !== 'OTHER' && <PriceChart symbol={holding.symbol} />}
 
         {/* FIFO Buy Lots Breakdown */}
         {holding.lots && holding.lots.length > 0 && (

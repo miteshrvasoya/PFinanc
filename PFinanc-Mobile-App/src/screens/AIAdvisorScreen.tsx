@@ -284,6 +284,15 @@ export const AIAdvisorScreen: React.FC<Props> = ({ onBack, onNavigate }) => {
         <Switch value={enabled} onValueChange={setEnabled} trackColor={{ false: colors.outlineVariant, true: colors.primaryContainer }} thumbColor={colors.onPrimary} />
       </View>
 
+      <Pressable style={styles.askCard} onPress={() => onNavigate && onNavigate('mcp')}>
+        <MaterialIcons name="hub" size={20} color={colors.primaryContainer} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.askTitle}>Connect Claude, ChatGPT or another assistant</Text>
+          <Text style={styles.askDesc}>Share your portfolio with your own AI through MCP.</Text>
+        </View>
+        <MaterialIcons name="chevron-right" size={20} color={colors.outline} />
+      </Pressable>
+
       <Pressable style={[styles.primaryBtn, saving && { opacity: 0.7 }]} disabled={saving} onPress={() => saveSettings(true)}>
         {saving ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.primaryBtnText}>Save & check my finances</Text>}
       </Pressable>
@@ -444,6 +453,22 @@ export const AIAdvisorScreen: React.FC<Props> = ({ onBack, onNavigate }) => {
               <Text style={styles.linkText}>Set a budget</Text>
             </Pressable>
           </View>
+          <Pressable style={styles.askCard} onPress={() => setTab('chat')}>
+            <MaterialIcons name="forum" size={20} color={colors.primaryContainer} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.askTitle}>Ask a question about this report</Text>
+              <Text style={styles.askDesc}>Chat about your numbers in plain language.</Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={20} color={colors.outline} />
+          </Pressable>
+          <Pressable style={styles.askCard} onPress={() => onNavigate && onNavigate('mcp')}>
+            <MaterialIcons name="hub" size={20} color={colors.primaryContainer} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.askTitle}>Deeper analysis in Claude or ChatGPT</Text>
+              <Text style={styles.askDesc}>Connect your own assistant to research prices and what to sell or buy.</Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={20} color={colors.outline} />
+          </Pressable>
 
           {(r.dataCaveats || []).length > 0 && (
             <View style={styles.caveat}>
@@ -486,7 +511,7 @@ export const AIAdvisorScreen: React.FC<Props> = ({ onBack, onNavigate }) => {
               </Pressable>
             ))}
           </View>
-          {tab === 'checkup' ? renderReport() : <AIChatPanel onOpenSettings={() => setView('settings')} providerLabel={PROVIDERS.find((p) => p.key === config?.aiProvider)?.label} modelName={config?.modelName} />}
+          {tab === 'checkup' ? renderReport() : <AIChatPanel onOpenSettings={() => setView('settings')} onOpenConnect={() => onNavigate && onNavigate('mcp')} providerLabel={PROVIDERS.find((p) => p.key === config?.aiProvider)?.label} modelName={config?.modelName} />}
         </>
       )}
     </KeyboardAvoidingView>
@@ -546,6 +571,9 @@ const styles = StyleSheet.create({
   planRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
   planAmt: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, color: colors.primary },
   linkRow: { flexDirection: 'row', gap: 10 },
+  askCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.surfaceContainerLowest, borderWidth: 1, borderColor: 'rgba(193,200,194,0.4)' },
+  askTitle: { fontFamily: 'Inter_700Bold', fontSize: 14, color: colors.onSurface },
+  askDesc: { fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.onSurfaceVariant, marginTop: 2 },
   linkBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: 14, backgroundColor: colors.surfaceContainer },
   linkText: { fontFamily: 'Inter_700Bold', fontSize: 13, color: colors.primary },
   caveat: { padding: 14, borderRadius: 14, backgroundColor: colors.secondaryContainer, gap: 4 },

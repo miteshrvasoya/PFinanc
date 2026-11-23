@@ -190,7 +190,12 @@ export class AIAdvisorController {
   // ── Chat sessions ──────────────────────────────────────────────────────────
 
   private static chatError(res: Response, err: any, code: string) {
-    const status = err?.status || (err?.name === 'LLMError' ? (err.code === 'AUTH' || err.code === 'NOT_CONFIGURED' ? 400 : 502) : 500);
+    // An LLMError's .status is the AI provider's HTTP status (e.g. 401 for a bad API key). Never forward it:
+    // clients would read a 401 as "your PFinanc login expired".
+    const status =
+      err?.name === 'LLMError'
+        ? (err.code === 'AUTH' || err.code === 'NOT_CONFIGURED' || err.code === 'BAD_REQUEST' ? 400 : err.code === 'RATE_LIMIT' ? 429 : 502)
+        : err?.status || 500;
     return res.status(status).json({ success: false, error: { code: err?.code || code, message: err?.message || 'Something went wrong' } });
   }
 
@@ -203,7 +208,7 @@ export class AIAdvisorController {
 
   static async createChatSession(req: Request, res: Response) {
     try {
-      const data = await AIChatService.createSession((req as any).user.id, getHouseholdId(req));
+      const data = await AIChatService.createSession((req as any).user.id, getHouseholdId(req), req.body?.focus);
       return res.status(201).json({ success: true, data });
     } catch (err: any) { return AIAdvisorController.chatError(res, err, 'AI_CHAT_ERROR'); }
   }
@@ -224,7 +229,31 @@ export class AIAdvisorController {
 
   static async sendChatMessage(req: Request, res: Response) {
     try {
-      const data = await AIChatService.sendMessage(req.params.id as string, (req as any).user.id, getHouseholdId(req), req.body?.content);
+      const data = await AIChatService.sendMessage((req as any).user.id, getHouseholdId(req), { sessionId: req.params.id as string, content: req.body?.content });
+      return res.json({ success: true, data });
+    } catch (err: any) { return AIAdvisorController.chatError(res, err, 'AI_CHAT_ERROR'); }
+  }
+
+  // POST /api/ai-advisor/chat/message  (no session id => a new chat is started automatically)
+  static async sendChatMessageAuto(req: Request, res: Response) {
+    try {
+      const data = await AIChatService.sendMessage((req as any).user.id, getHouseholdId(req), {
+        sessionId: req.body?.sessionId || undefined, content: req.body?.content, focus: req.body?.focus,
+      });
+      return res.json({ success: true, data });
+    } catch (err: any) { return AIAdvisorController.chatError(res, err, 'AI_CHAT_ERROR'); }
+  }
+
+  static async regenerateChatMessage(req: Request, res: Response) {
+    try {
+      const data = await AIChatService.regenerate(req.params.id as string, (req as any).user.id, getHouseholdId(req));
+      return res.json({ success: true, data });
+    } catch (err: any) { return AIAdvisorController.chatError(res, err, 'AI_CHAT_ERROR'); }
+  }
+
+  static async renameChatSession(req: Request, res: Response) {
+    try {
+      const data = await AIChatService.renameSession(req.params.id as string, (req as any).user.id, getHouseholdId(req), req.body?.title);
       return res.json({ success: true, data });
     } catch (err: any) { return AIAdvisorController.chatError(res, err, 'AI_CHAT_ERROR'); }
   }

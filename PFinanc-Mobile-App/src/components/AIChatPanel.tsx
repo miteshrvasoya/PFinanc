@@ -3,89 +3,102 @@ import {
   View, Text, StyleSheet, ScrollView, Pressable, TextInput, ActivityIndicator, Alert, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { colors } from '../theme/colors';
 import { apiClient } from '../api/client';
+import { RichText } from './RichText';
+
+type Focus = 'general' | 'investments' | 'spending';
 
 interface Props {
   onOpenSettings: () => void;
+  onOpenConnect?: () => void;
   providerLabel?: string;
   modelName?: string;
 }
 
-interface Msg { id: string; role: 'user' | 'assistant'; content: string; created_at?: string }
-interface SessionRow { id: string; title: string; updated_at: string; message_count: number }
+interface Msg { id: string; role: 'user' | 'assistant'; content: string }
+interface SessionRow { id: string; title: string; focus: Focus; updated_at: string; message_count: number }
 
-const SUGGESTIONS = [
-  'Where am I spending the most?',
-  'Is my emergency fund enough?',
-  'How can I save more each month?',
-  'Can I start a ₹5,000 monthly SIP?',
+const FOCUSES: { id: Focus; label: string; icon: React.ComponentProps<typeof MaterialIcons>['name'] }[] = [
+  { id: 'investments', label: 'Investments', icon: 'show-chart' },
+  { id: 'spending', label: 'Spending', icon: 'receipt-long' },
+  { id: 'general', label: 'Everything', icon: 'dashboard' },
 ];
 
-export const AIChatPanel: React.FC<Props> = ({ onOpenSettings, providerLabel, modelName }) => {
+const STARTERS: Record<Focus, string[]> = {
+  investments: [
+    'Which of my holdings should I consider reducing?',
+    'What should I add to balance my portfolio?',
+    'Are any lots close to turning long-term for tax?',
+  ],
+  spending: ['Where am I spending the most?', 'How much can I safely invest this month?', 'Which recurring payments could I trim?'],
+  general: ['How healthy are my finances right now?', 'Is my emergency fund enough?', 'How can I save more each month?'],
+};
+
+export const AIChatPanel: React.FC<Props> = ({ onOpenSettings, onOpenConnect, providerLabel, modelName }) => {
   const [mode, setMode] = useState<'chat' | 'history'>('chat');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [title, setTitle] = useState('New chat');
+  const [focus, setFocus] = useState<Focus>('investments');
   const [messages, setMessages] = useState<Msg[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [input, setInput] = useState('');
-  const [starting, setStarting] = useState(false);
+  const [loadingSession, setLoadingSession] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [configIssue, setConfigIssue] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
-  const scrollToEnd = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+  const scrollToEnd = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
 
   const loadSessions = useCallback(async () => {
     try {
       const res = await apiClient.get('/api/ai-advisor/chat/sessions');
       setSessions(res?.data || []);
-    } catch { /* history is a convenience; ignore */ }
+    } catch { /* history is a convenience */ }
   }, []);
+  useEffect(() => { loadSessions(); }, [loadSessions]);
 
   const openSession = async (id: string) => {
     setError(null);
-    setStarting(true);
+    setLoadingSession(true);
     try {
       const res = await apiClient.get(`/api/ai-advisor/chat/sessions/${id}`);
       setSessionId(res.data.id);
       setTitle(res.data.title);
+      setFocus(res.data.focus || 'general');
       setMessages(res.data.messages || []);
       setMode('chat');
       scrollToEnd();
     } catch (e: any) {
       Alert.alert('Could not open chat', e?.message || 'Please try again.');
     } finally {
-      setStarting(false);
+      setLoadingSession(false);
     }
   };
 
-  // Start a brand-new session (takes a fresh snapshot of your finances on the server)
-  const startNewSession = async (firstMessage?: string) => {
+  // A new session simply means "clear the screen"; the server snapshots your latest finances on the first message.
+  const newChat = () => {
+    setSessionId(null);
+    setTitle('New chat');
+    setMessages([]);
+    setInput('');
     setError(null);
     setConfigIssue(false);
-    setStarting(true);
-    try {
-      const res = await apiClient.post('/api/ai-advisor/chat/sessions', {});
-      setSessionId(res.data.id);
-      setTitle('New chat');
-      setMessages([]);
-      setInput('');
-      setMode('chat');
-      loadSessions();
-      if (firstMessage) await send(firstMessage, res.data.id);
-    } catch (e: any) {
-      setError(e?.message || 'Could not start a new chat.');
-    } finally {
-      setStarting(false);
-    }
+    setMode('chat');
   };
 
-  const send = async (text: string, forSession?: string) => {
-    const id = forSession || sessionId;
+  const failWith = (e: any) => {
+    const msg: string = e?.message || 'Could not get a reply.';
+    setError(msg);
+    setConfigIssue(/api key|not configured|rejected|unauthor|invalid/i.test(msg));
+  };
+
+  const send = async (text: string) => {
     const content = text.trim();
-    if (!id || !content || sending) return;
+    if (!content || sending) return;
     setError(null);
     setConfigIssue(false);
     setInput('');
@@ -94,21 +107,40 @@ export const AIChatPanel: React.FC<Props> = ({ onOpenSettings, providerLabel, mo
     setMessages((m) => [...m, temp]);
     scrollToEnd();
     try {
-      const res = await apiClient.post(`/api/ai-advisor/chat/sessions/${id}/messages`, { content });
-      setMessages((m) => [...m, res.data.message]);
+      const res = await apiClient.post('/api/ai-advisor/chat/message', { content, sessionId: sessionId || undefined, focus });
+      setSessionId(res.data.sessionId);
       setTitle(res.data.title);
+      setMessages((m) => [...m, res.data.message]);
       loadSessions();
       scrollToEnd();
     } catch (e: any) {
-      // Roll back the optimistic message so the user can retry
-      setMessages((m) => m.filter((x) => x.id !== temp.id));
+      setMessages((m) => m.filter((x) => x.id !== temp.id)); // roll back so the text can be retried
       setInput(content);
-      const msg: string = e?.message || 'Could not get a reply.';
-      setError(msg);
-      setConfigIssue(/api key|not configured|auth|invalid|unauthor/i.test(msg));
+      failWith(e);
     } finally {
       setSending(false);
     }
+  };
+
+  const regenerate = async () => {
+    if (!sessionId || sending) return;
+    setError(null);
+    setSending(true);
+    try {
+      const res = await apiClient.post(`/api/ai-advisor/chat/sessions/${sessionId}/regenerate`, {});
+      setMessages((m) => [...m.slice(0, -1), res.data.message]);
+      scrollToEnd();
+    } catch (e: any) {
+      failWith(e);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const copy = async (m: Msg) => {
+    await Clipboard.setStringAsync(m.content);
+    setCopiedId(m.id);
+    setTimeout(() => setCopiedId(null), 1500);
   };
 
   const confirmDelete = (s: SessionRow) => {
@@ -119,7 +151,7 @@ export const AIChatPanel: React.FC<Props> = ({ onOpenSettings, providerLabel, mo
           try {
             await apiClient.delete(`/api/ai-advisor/chat/sessions/${s.id}`);
             setSessions((list) => list.filter((x) => x.id !== s.id));
-            if (s.id === sessionId) { setSessionId(null); setMessages([]); setTitle('New chat'); }
+            if (s.id === sessionId) newChat();
           } catch (e: any) {
             Alert.alert('Could not delete', e?.message || 'Please try again.');
           }
@@ -128,9 +160,9 @@ export const AIChatPanel: React.FC<Props> = ({ onOpenSettings, providerLabel, mo
     ]);
   };
 
-  useEffect(() => { loadSessions(); }, [loadSessions]);
+  const lastAssistantId = [...messages].reverse().find((m) => m.role === 'assistant')?.id;
 
-  // ── History list ─────────────────────────────────────────────────────────────
+  // ── History ──────────────────────────────────────────────────────────────────
   if (mode === 'history') {
     return (
       <View style={styles.flex}>
@@ -139,12 +171,13 @@ export const AIChatPanel: React.FC<Props> = ({ onOpenSettings, providerLabel, mo
             <MaterialIcons name="arrow-back" size={20} color={colors.primary} />
             <Text style={styles.barBtnText}>Back to chat</Text>
           </Pressable>
-          <Pressable style={styles.newBtn} onPress={() => startNewSession()} disabled={starting}>
+          <Pressable style={styles.newBtn} onPress={newChat}>
             <MaterialIcons name="add" size={18} color={colors.onPrimary} />
             <Text style={styles.newBtnText}>New chat</Text>
           </Pressable>
         </View>
         <ScrollView contentContainerStyle={{ padding: 20, gap: 10 }}>
+          {loadingSession && <ActivityIndicator color={colors.primary} />}
           {sessions.length === 0 ? (
             <Text style={styles.empty}>No past chats yet.</Text>
           ) : sessions.map((s) => (
@@ -174,13 +207,9 @@ export const AIChatPanel: React.FC<Props> = ({ onOpenSettings, providerLabel, mo
           <MaterialIcons name="history" size={20} color={colors.primary} />
           <Text style={styles.barBtnText}>Past chats</Text>
         </Pressable>
-        <Pressable style={styles.newBtn} onPress={() => startNewSession()} disabled={starting}>
-          {starting ? <ActivityIndicator size="small" color={colors.onPrimary} /> : (
-            <>
-              <MaterialIcons name="add" size={18} color={colors.onPrimary} />
-              <Text style={styles.newBtnText}>New chat</Text>
-            </>
-          )}
+        <Pressable style={styles.newBtn} onPress={newChat}>
+          <MaterialIcons name="add" size={18} color={colors.onPrimary} />
+          <Text style={styles.newBtnText}>New chat</Text>
         </Pressable>
       </View>
 
@@ -192,81 +221,106 @@ export const AIChatPanel: React.FC<Props> = ({ onOpenSettings, providerLabel, mo
         </Pressable>
       )}
 
-      {!sessionId ? (
-        <ScrollView contentContainerStyle={styles.intro}>
-          <View style={styles.introIcon}><MaterialIcons name="forum" size={30} color={colors.primaryFixed} /></View>
-          <Text style={styles.introTitle}>Ask about your money</Text>
-          <Text style={styles.introDesc}>
-            Each chat starts with a fresh look at your latest accounts, spending and investments. Pick a question or type your own.
-          </Text>
-          {SUGGESTIONS.map((q) => (
-            <Pressable key={q} style={styles.suggestion} disabled={starting} onPress={() => startNewSession(q)}>
-              <Text style={styles.suggestionText}>{q}</Text>
-              <MaterialIcons name="arrow-forward" size={16} color={colors.primaryContainer} />
+      {!sessionId && (
+        <View style={styles.focusRow}>
+          {FOCUSES.map((f) => (
+            <Pressable key={f.id} style={[styles.focusChip, focus === f.id && styles.focusChipOn]} onPress={() => setFocus(f.id)}>
+              <MaterialIcons name={f.icon} size={15} color={focus === f.id ? colors.onPrimary : colors.onSurfaceVariant} />
+              <Text style={[styles.focusText, focus === f.id && { color: colors.onPrimary }]}>{f.label}</Text>
             </Pressable>
           ))}
-          <Pressable style={styles.startBtn} disabled={starting} onPress={() => startNewSession()}>
-            {starting ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.startBtnText}>Start a new chat</Text>}
-          </Pressable>
-          {starting && <Text style={styles.introDesc}>Getting your latest numbers ready…</Text>}
-          {error && <Text style={styles.errorInline}>{error}</Text>}
-        </ScrollView>
-      ) : (
-        <>
-          <Text style={styles.chatTitle} numberOfLines={1}>{title}</Text>
-          <ScrollView ref={scrollRef} contentContainerStyle={styles.msgList} keyboardShouldPersistTaps="handled">
-            {messages.length === 0 && (
-              <View style={{ gap: 8 }}>
-                <Text style={styles.introDesc}>Your finances are loaded. What would you like to know?</Text>
-                {SUGGESTIONS.map((q) => (
-                  <Pressable key={q} style={styles.suggestion} onPress={() => send(q)}>
-                    <Text style={styles.suggestionText}>{q}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-            {messages.map((m) => (
-              <View key={m.id} style={[styles.bubble, m.role === 'user' ? styles.userBubble : styles.aiBubble]}>
-                <Text style={[styles.bubbleText, m.role === 'user' && { color: colors.onPrimary }]}>{m.content}</Text>
-              </View>
+        </View>
+      )}
+      {sessionId && <Text style={styles.chatTitle} numberOfLines={1}>{title}</Text>}
+
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.msgList} keyboardShouldPersistTaps="handled">
+        {messages.length === 0 && (
+          <View style={{ gap: 10 }}>
+            <View style={styles.introIcon}><MaterialIcons name="forum" size={28} color={colors.primaryFixed} /></View>
+            <Text style={styles.introTitle}>Ask about your money</Text>
+            <Text style={styles.introDesc}>
+              Type your own question below, or tap one. Each new chat starts from your latest accounts and holdings.
+            </Text>
+            {STARTERS[focus].map((q) => (
+              <Pressable key={q} style={styles.suggestion} onPress={() => send(q)}>
+                <Text style={styles.suggestionText}>{q}</Text>
+                <MaterialIcons name="arrow-forward" size={16} color={colors.primaryContainer} />
+              </Pressable>
             ))}
-            {sending && (
-              <View style={[styles.bubble, styles.aiBubble, { flexDirection: 'row', gap: 8, alignItems: 'center' }]}>
-                <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={styles.bubbleText}>Thinking…</Text>
-              </View>
+            {!!onOpenConnect && (
+              <Pressable style={styles.connectCard} onPress={onOpenConnect}>
+                <MaterialIcons name="hub" size={20} color={colors.primaryContainer} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.connectTitle}>Use Claude or ChatGPT instead</Text>
+                  <Text style={styles.connectDesc}>Let your own AI assistant read your portfolio and research prices.</Text>
+                </View>
+                <MaterialIcons name="chevron-right" size={20} color={colors.outline} />
+              </Pressable>
             )}
-            {error && (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorBoxText}>{error}</Text>
-                {configIssue && (
-                  <Pressable onPress={onOpenSettings}><Text style={styles.errorLink}>Check AI settings</Text></Pressable>
+          </View>
+        )}
+
+        {messages.map((m) => (
+          <View key={m.id} style={[styles.bubble, m.role === 'user' ? styles.userBubble : styles.aiBubble]}>
+            {m.role === 'user'
+              ? <Text style={[styles.userText]}>{m.content}</Text>
+              : <RichText text={m.content} />}
+            {m.role === 'assistant' && (
+              <View style={styles.bubbleActions}>
+                <Pressable onPress={() => copy(m)} hitSlop={8} style={styles.actionBtn}>
+                  <MaterialIcons name={copiedId === m.id ? 'check' : 'content-copy'} size={14} color={colors.outline} />
+                  <Text style={styles.actionText}>{copiedId === m.id ? 'Copied' : 'Copy'}</Text>
+                </Pressable>
+                {m.id === lastAssistantId && (
+                  <Pressable onPress={regenerate} disabled={sending} hitSlop={8} style={styles.actionBtn}>
+                    <MaterialIcons name="refresh" size={14} color={colors.outline} />
+                    <Text style={styles.actionText}>Try again</Text>
+                  </Pressable>
                 )}
               </View>
             )}
-          </ScrollView>
-          <View style={styles.inputBar}>
-            <TextInput
-              style={styles.input}
-              value={input}
-              onChangeText={setInput}
-              placeholder="Ask anything about your money"
-              placeholderTextColor={colors.outline}
-              multiline
-              maxLength={2000}
-            />
-            <Pressable
-              style={[styles.sendBtn, (!input.trim() || sending) && { opacity: 0.4 }]}
-              disabled={!input.trim() || sending}
-              onPress={() => send(input)}
-              accessibilityLabel="Send"
-            >
-              <MaterialIcons name="send" size={20} color={colors.onPrimary} />
-            </Pressable>
           </View>
-          <Text style={styles.footnote}>AI guidance, not professional financial advice.</Text>
-        </>
-      )}
+        ))}
+
+        {sending && (
+          <View style={[styles.bubble, styles.aiBubble, { flexDirection: 'row', gap: 8, alignItems: 'center' }]}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.thinking}>Thinking…</Text>
+          </View>
+        )}
+
+        {error && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorBoxText}>{error}</Text>
+            {configIssue && (
+              <Pressable onPress={onOpenSettings}><Text style={styles.errorLink}>Check AI settings</Text></Pressable>
+            )}
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Always visible: type your own question at any time */}
+      <View style={styles.inputBar}>
+        <TextInput
+          style={styles.input}
+          value={input}
+          onChangeText={setInput}
+          placeholder="Ask anything about your money"
+          placeholderTextColor={colors.outline}
+          multiline
+          maxLength={2000}
+          editable={!sending}
+        />
+        <Pressable
+          style={[styles.sendBtn, (!input.trim() || sending) && { opacity: 0.4 }]}
+          disabled={!input.trim() || sending}
+          onPress={() => send(input)}
+          accessibilityLabel="Send"
+        >
+          <MaterialIcons name="send" size={20} color={colors.onPrimary} />
+        </Pressable>
+      </View>
+      <Text style={styles.footnote}>AI guidance, not professional financial advice.</Text>
     </KeyboardAvoidingView>
   );
 };
@@ -281,26 +335,33 @@ const styles = StyleSheet.create({
   modelChip: { flexDirection: 'row', alignItems: 'center', gap: 6, marginHorizontal: 20, marginBottom: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: colors.surfaceContainerLow },
   modelChipText: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.onSurfaceVariant },
   modelChipLink: { fontFamily: 'Inter_700Bold', fontSize: 12, color: colors.primaryContainer },
+  focusRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, marginBottom: 4 },
+  focusChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.surfaceContainer },
+  focusChipOn: { backgroundColor: colors.primaryContainer },
+  focusText: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: colors.onSurfaceVariant },
   empty: { fontFamily: 'Inter_500Medium', fontSize: 14, color: colors.onSurfaceVariant, textAlign: 'center', marginTop: 30 },
   sessionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.surfaceContainerLowest, borderWidth: 1, borderColor: 'rgba(193,200,194,0.4)' },
   sessionActive: { borderColor: colors.primaryContainer },
   sessionTitle: { fontFamily: 'Inter_700Bold', fontSize: 14, color: colors.onSurface },
   sessionSub: { fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.onSurfaceVariant, marginTop: 2 },
-  intro: { padding: 20, gap: 10, alignItems: 'stretch' },
-  introIcon: { width: 60, height: 60, borderRadius: 20, backgroundColor: colors.primaryContainer, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
+  introIcon: { width: 56, height: 56, borderRadius: 18, backgroundColor: colors.primaryContainer, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
   introTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 20, color: colors.onSurface, textAlign: 'center' },
   introDesc: { fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.onSurfaceVariant, textAlign: 'center', lineHeight: 19 },
   suggestion: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 14, backgroundColor: colors.surfaceContainer },
   suggestionText: { flex: 1, fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.onSurface },
-  startBtn: { height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryContainer, marginTop: 6 },
-  startBtnText: { fontFamily: 'Inter_700Bold', fontSize: 15, color: colors.onPrimary },
-  errorInline: { fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.error, textAlign: 'center' },
+  connectCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.outlineVariant, borderStyle: 'dashed', marginTop: 4 },
+  connectTitle: { fontFamily: 'Inter_700Bold', fontSize: 14, color: colors.onSurface },
+  connectDesc: { fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.onSurfaceVariant, marginTop: 2 },
   chatTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, color: colors.onSurfaceVariant, paddingHorizontal: 20, paddingBottom: 4 },
   msgList: { padding: 20, gap: 10 },
-  bubble: { maxWidth: '86%', padding: 12, borderRadius: 18 },
+  bubble: { maxWidth: '90%', padding: 12, borderRadius: 18 },
   userBubble: { alignSelf: 'flex-end', backgroundColor: colors.primaryContainer, borderBottomRightRadius: 6 },
   aiBubble: { alignSelf: 'flex-start', backgroundColor: colors.surfaceContainer, borderBottomLeftRadius: 6 },
-  bubbleText: { fontFamily: 'Inter_500Medium', fontSize: 14, lineHeight: 20, color: colors.onSurface },
+  userText: { fontFamily: 'Inter_500Medium', fontSize: 14, lineHeight: 21, color: colors.onPrimary },
+  thinking: { fontFamily: 'Inter_500Medium', fontSize: 14, color: colors.onSurfaceVariant },
+  bubbleActions: { flexDirection: 'row', gap: 16, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(193,200,194,0.5)' },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  actionText: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: colors.outline },
   errorBox: { padding: 12, borderRadius: 14, backgroundColor: colors.errorContainer, gap: 6 },
   errorBoxText: { fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.onErrorContainer },
   errorLink: { fontFamily: 'Inter_700Bold', fontSize: 13, color: colors.onErrorContainer, textDecorationLine: 'underline' },
