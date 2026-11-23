@@ -10,7 +10,7 @@ A self-hosted personal and family finance manager: ledger-correct accounts and t
 - **Family accounts:** roles (`OWNER`, `ADMIN`, `MEMBER`, `VIEWER`) with private and shared visibility.
 - **Android SMS scan:** reads bank SMS and prepares drafts for you to approve.
 - **AI advisor (optional):** a money check-up with insights and suggestions, plus a chat that knows your portfolio. Bring your own API key.
-- **Angel One (optional):** live NSE/BSE stock and ETF prices and your demat holdings through SmartAPI, with credentials kept in the backend `.env`. See [docs/angelone.md](PFinanc-FullStack/docs/angelone.md).
+- **Angel One (optional):** live NSE/BSE stock and ETF prices, price charts (1D by default, or since you bought), and your demat holdings through SmartAPI, with credentials kept in the backend `.env`. See [docs/angelone.md](PFinanc-FullStack/docs/angelone.md).
 - **MCP server:** connect Claude, ChatGPT or any MCP-capable assistant to your portfolio (read-only) so it can research prices and suggest what to hold, sell or buy. See [docs/mcp.md](PFinanc-FullStack/docs/mcp.md).
 - **Clients:** web app, Android/iOS app (Expo), and a marketing site.
 

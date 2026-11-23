@@ -70,6 +70,15 @@ export interface RawQuote {
 
 export type QuoteMode = 'LTP' | 'OHLC' | 'FULL';
 
+/** Candle intervals offered by the historical API, with the documented maximum days per request. */
+export const CANDLE_INTERVALS = {
+  ONE_MINUTE: 30, THREE_MINUTE: 60, FIVE_MINUTE: 100, TEN_MINUTE: 100,
+  FIFTEEN_MINUTE: 200, THIRTY_MINUTE: 200, ONE_HOUR: 400, ONE_DAY: 2000,
+} as const;
+export type CandleInterval = keyof typeof CANDLE_INTERVALS;
+
+export interface Candle { t: string; o: number; h: number; l: number; c: number; v: number }
+
 // ── Rate gate: serialises calls per API and enforces a minimum gap ───────────
 
 const lastCall = new Map<string, number>();
@@ -89,6 +98,23 @@ function gate(key: string, gapMs: number): Promise<void> {
   chains.set(key, run.catch(() => undefined));
   return run;
 }
+
+/**
+ * The candle API also has per-minute (40) and per-hour (2000) budgets. Rather than queue for a minute, fail fast with a
+ * rate-limit error so the caller can fall back to stored prices.
+ */
+const windows = new Map<string, number[]>();
+function windowGuard(key: string, max: number, windowMs: number) {
+  const now = Date.now();
+  const recent = (windows.get(key) ?? []).filter((t) => now - t < windowMs);
+  if (recent.length >= max) {
+    windows.set(key, recent);
+    throw new AngelOneError('RATE_LIMIT', 'Too many chart requests in the last minute. Wait a moment and try again.');
+  }
+  recent.push(now);
+  windows.set(key, recent);
+}
+export const resetAngelOneWindows = () => windows.clear();
 
 // ── Session (memory only, never persisted) ───────────────────────────────────
 
@@ -247,6 +273,19 @@ export const AngelOneClient = {
     if (total > 50) throw new AngelOneError('TOO_MANY_TOKENS', 'A quote request can carry at most 50 symbols.');
     const data = await secure<any>('POST', '/rest/secure/angelbroking/market/v1/quote/', 'quote', 1100, { mode, exchangeTokens });
     return { fetched: data?.fetched || [], unfetched: data?.unfetched || [] };
+  },
+
+  /**
+   * Historical candles. fromdate/todate are "yyyy-MM-dd HH:mm" in India time. Each record is documented as
+   * [timestamp, open, high, low, close, volume]. Limits: 2/s, 40/min, 2000/h, and a maximum span per interval.
+   */
+  async getCandles(exchange: 'NSE' | 'BSE', symbolToken: string, interval: CandleInterval, fromdate: string, todate: string): Promise<Candle[]> {
+    windowGuard('candles', 40, 60_000);
+    const rows = await secure<any[]>('POST', '/rest/secure/angelbroking/historical/v1/getCandleData', 'candles', 550, { exchange, symboltoken: symbolToken, interval, fromdate, todate });
+    return (rows || [])
+      .filter((r) => Array.isArray(r) && r.length >= 5)
+      .map((r) => ({ t: String(r[0]), o: Number(r[1]), h: Number(r[2]), l: Number(r[3]), c: Number(r[4]), v: Number(r[5]) || 0 }))
+      .filter((c) => c.c > 0);
   },
 
   async searchScrip(exchange: 'NSE' | 'BSE', text: string): Promise<Array<{ exchange: string; tradingsymbol: string; symboltoken: string }>> {

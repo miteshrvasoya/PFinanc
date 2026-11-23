@@ -49,6 +49,16 @@ Optional settings (see `backend/.env.example`): `ANGELONE_HOUSEHOLD_ID`, `ANGELO
 - A position you sold on Angel One is closed in PFinanc on the next import.
 - Import is manual by design because it changes stored data.
 
+### Price charts
+Open any holding (web: click it on the Portfolio page; mobile: expand it on the Portfolio screen) to see its price chart.
+
+- **Ranges:** **1D** (the default: the latest trading session, so it also works on weekends and holidays), 1W, 1M, 3M, 6M, 1Y, and **Since I bought**.
+- **Since I bought** starts from your first buy in your trade history. For holdings that have no trade history (for example ones imported from Angel One as snapshots) the app asks for the buy date once, remembers it, and lets you remove it again.
+- The chart marks each of your buys, draws your average cost as a dashed line (when it is near the visible prices), and shows the change, high and low for the range plus your return since buying.
+- **Source:** Angel One candles for stocks and ETFs. Granularity follows the span within the documented limits: 5-minute candles for a day, 15-minute for a week, hourly for a month, daily beyond that (daily candles reach back up to 2,000 days, so very old purchases show the most recent five years). Mutual funds, and any case where Angel One is unavailable or rate limited, use the daily prices PFinanc has stored, and the chart says so. Stored prices build up over time, so a young install has a short history.
+- Candle requests are limited by Angel One to 2 per second, 40 per minute and 2,000 per hour. PFinanc caches charts (1 minute for intraday, 10 minutes for daily) and stops at 40 per minute rather than risk the account; the chart then falls back to stored prices.
+- Charts and price refreshes use only public market data through the shared login, so they work for every household. Reading **account data** (holdings import, profile) stays restricted to the one allowed household.
+
 ## API
 
 All under `/api/integrations/angelone` (normal PFinanc login, owner/admin of the allowed household).
@@ -61,6 +71,14 @@ All under `/api/integrations/angelone` (normal PFinanc login, owner/admin of the
 | `POST /holdings/sync` | Import holdings as snapshots |
 | `POST /prices/sync` | Refresh prices for everything the household holds |
 | `GET /quotes?symbols=RELIANCE,TCS&exchange=NSE` | Live quotes for any NSE/BSE symbol |
+
+Charts live with the other investment routes under `/api/investments` (any household member):
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /chart/:symbol?range=1D&view=personal` | Price history. `range` is `1D` (default), `1W`, `1M`, `3M`, `6M`, `1Y` or `SINCE_BUY`; `view` is `personal` or `household` |
+| `PUT /holdings/:symbol/buy-date` | Save the date you bought a holding that has no trade history: `{ "date": "2024-03-15" }` |
+| `DELETE /holdings/:symbol/buy-date` | Remove the saved date |
 
 ## Rate limits and errors
 

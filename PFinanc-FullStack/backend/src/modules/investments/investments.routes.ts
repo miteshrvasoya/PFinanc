@@ -8,6 +8,8 @@ import { PricesController } from './prices/prices.controller.js';
 import { FixedDepositsController } from './fixed-deposits/fixedDeposits.controller.js';
 import { RetirementController } from './retirement/retirement.controller.js';
 import { InvestmentImportsController } from './imports/investmentImports.controller.js';
+import { PriceChartService } from './charts/priceChart.service.js';
+import { getHouseholdId } from '../../utils/request.js';
 
 export const investmentsRouter = Router();
 
@@ -21,6 +23,40 @@ investmentsRouter.get('/securities/:id', SecuritiesController.getById);
 investmentsRouter.post('/securities', SecuritiesController.create);
 
 // 2. Portfolio & Holdings
+// Price history for a holding: ?range=1D|1W|1M|3M|6M|1Y|SINCE_BUY (default 1D) &view=personal|household
+investmentsRouter.get('/chart/:symbol', async (req, res, next) => {
+  try {
+    const data = await PriceChartService.getChart({
+      householdId: getHouseholdId(req), userId: req.user!.id, symbol: String(req.params.symbol),
+      range: req.query.range as string | undefined, personal: req.query.view !== 'household',
+    });
+    res.json({ success: true, data });
+  } catch (err: any) {
+    if (err?.status) return res.status(err.status).json({ success: false, error: { code: err.code || 'CHART_ERROR', message: err.message } });
+    next(err);
+  }
+});
+
+// Remember when you bought a holding that has no trade history (used by "since I bought")
+investmentsRouter.put('/holdings/:symbol/buy-date', async (req, res, next) => {
+  try {
+    const data = await PriceChartService.setBuyDate(getHouseholdId(req), req.user!.id, String(req.params.symbol), String(req.body?.date || ''));
+    res.json({ success: true, data });
+  } catch (err: any) {
+    if (err?.status) return res.status(err.status).json({ success: false, error: { code: err.code || 'BUY_DATE_ERROR', message: err.message } });
+    next(err);
+  }
+});
+investmentsRouter.delete('/holdings/:symbol/buy-date', async (req, res, next) => {
+  try {
+    await PriceChartService.clearBuyDate(getHouseholdId(req), req.user!.id, String(req.params.symbol));
+    res.json({ success: true });
+  } catch (err: any) {
+    if (err?.status) return res.status(err.status).json({ success: false, error: { code: err.code || 'BUY_DATE_ERROR', message: err.message } });
+    next(err);
+  }
+});
+
 investmentsRouter.get('/portfolio', PortfolioController.getSummary);
 investmentsRouter.get('/portfolio/holdings', PortfolioController.getHoldings);
 investmentsRouter.get('/portfolio/snapshots', PortfolioController.getSnapshots);

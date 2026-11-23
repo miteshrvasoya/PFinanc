@@ -5,6 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { apiClient } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { PriceChart } from '../components/PriceChart';
 
 type SortKey = 'value' | 'gain' | 'name';
 
@@ -342,6 +343,9 @@ export const PortfolioScreen: React.FC<PortfolioProps> = ({ onNavigate }) => {
                             {isPrivacyMasked ? '••••' : `${up ? '+' : '-'}${formatCurrency(holding.unrealized_pnl)}`}
                           </Text>
                         </View>
+                        {holding.security_type !== 'OTHER' && (
+                          <View style={{ width: '100%' }}><PriceChart symbol={holding.symbol} /></View>
+                        )}
                         {(holding.account_name || holding.owner_name) && (
                           <Text style={styles.detailFoot}>
                             {[holding.owner_name, holding.account_name].filter(Boolean).join(' • ')}

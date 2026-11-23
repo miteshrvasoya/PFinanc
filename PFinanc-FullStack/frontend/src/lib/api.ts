@@ -718,6 +718,19 @@ class ApiClient {
     return this.request('/ai-advisor/notifications/read-all', { method: 'POST' });
   }
 
+  // ── Price charts ──
+  async getPriceChart(symbol: string, range: string, view: 'personal' | 'household') {
+    return this.request(`/investments/chart/${encodeURIComponent(symbol)}?range=${range}&view=${view}`);
+  }
+
+  async setHoldingBuyDate(symbol: string, date: string) {
+    return this.request(`/investments/holdings/${encodeURIComponent(symbol)}/buy-date`, { method: 'PUT', body: JSON.stringify({ date }) });
+  }
+
+  async clearHoldingBuyDate(symbol: string) {
+    return this.request(`/investments/holdings/${encodeURIComponent(symbol)}/buy-date`, { method: 'DELETE' });
+  }
+
   // ── Angel One (stocks & ETFs; mutual funds are not offered by SmartAPI) ──
   async getAngelOneStatus() {
     return this.request('/integrations/angelone/status');
