@@ -1,2 +1,9 @@
 # Google Stitch Files
 stitch_*
+
+# Environment files (any folder) - keep only *.env.example templates tracked
+.env
+.env.*
+*.env
+!.env.example
+!*.env.example
