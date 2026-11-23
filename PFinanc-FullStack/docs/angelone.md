@@ -86,6 +86,14 @@ Documented limits are enforced client-side per API, and PFinanc will wait rather
 
 Session errors (`AG8001`, `AG8002`, `AG8003`, `AB8050`, `AB8051`, `AB1010`, `AB1011`) trigger an automatic token refresh or a fresh login, then one retry. `AB1015` ("Holding not found") is treated as an empty portfolio.
 
+## Hosting notes
+
+PFinanc's Angel One scheduler (market-hours price refresh, morning instrument-master refresh) and its small in-memory caches need a **long-running backend process** (a VM, container, or `npm start`). On serverless platforms such as Vercel the process is short-lived, so:
+
+- the scheduler does not run: use **Refresh prices now**, or call `POST /api/integrations/angelone/prices/sync` from an external scheduler;
+- the login session and chart cache restart with each cold start (harmless: PFinanc simply logs in again, within Angel One's 1-per-second login limit);
+- the first use downloads the ~42 MB instrument master, which can exceed a serverless time limit. Run the backend once on a normal server (or locally) against the same database to load it, or use a host without short request timeouts.
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
