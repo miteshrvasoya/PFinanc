@@ -121,7 +121,7 @@ export const Header: React.FC = () => {
                     notifications.map((n: any) => (
                       <Link
                         key={n.id}
-                        href={n.report_id ? `/ai-advisor?report=${n.report_id}` : '/ai-advisor'}
+                        href={String(n.type || '').startsWith('SIGNAL_') ? '/signals' : n.report_id ? `/ai-advisor?report=${n.report_id}` : '/ai-advisor'}
                         onClick={() => setShowNotifDropdown(false)}
                         className="block px-4 py-3 hover:bg-slate-800/50 transition-colors"
                       >

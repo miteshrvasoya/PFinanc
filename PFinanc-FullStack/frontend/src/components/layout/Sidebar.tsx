@@ -13,7 +13,8 @@ import {
   Target,
   PiggyBank,
   Settings,
-  PlugZap
+  PlugZap,
+  Activity
 } from 'lucide-react';
 
 import Link from 'next/link';
@@ -28,6 +29,7 @@ export const Sidebar: React.FC<{ onQuickAction: () => void }> = ({ onQuickAction
     { id: 'finance', href: '/finance', label: 'Finance', icon: <Target className="w-5 h-5" /> },
     { id: 'transactions', href: '/transactions', label: 'Transactions', icon: <Receipt className="w-5 h-5" /> },
     { id: 'investments', href: '/investments', label: 'Portfolio', icon: <TrendingUp className="w-5 h-5" /> },
+    { id: 'signals', href: '/signals', label: 'Stock Signals', icon: <Activity className="w-5 h-5" /> },
     { id: 'accounts', href: '/accounts', label: 'Bank Accounts', icon: <Wallet className="w-5 h-5" /> },
   ];
 

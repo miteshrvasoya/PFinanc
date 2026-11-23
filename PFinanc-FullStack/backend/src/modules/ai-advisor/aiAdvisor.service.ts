@@ -547,7 +547,7 @@ ${JSON.stringify(REPORT_JSON_SCHEMA)}`;
 
   // ── Notification Helper ───────────────────────────────────────────────────────
 
-  private static async createNotification(
+  static async createNotification(
     userId: string,
     householdId: string,
     reportId: string | null,

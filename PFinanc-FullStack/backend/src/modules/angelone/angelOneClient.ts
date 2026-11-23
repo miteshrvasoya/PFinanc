@@ -104,15 +104,20 @@ function gate(key: string, gapMs: number): Promise<void> {
  * rate-limit error so the caller can fall back to stored prices.
  */
 const windows = new Map<string, number[]>();
-function windowGuard(key: string, max: number, windowMs: number) {
-  const now = Date.now();
-  const recent = (windows.get(key) ?? []).filter((t) => now - t < windowMs);
-  if (recent.length >= max) {
+async function windowGuard(key: string, max: number, windowMs: number, patient = false) {
+  for (;;) {
+    const now = Date.now();
+    const recent = (windows.get(key) ?? []).filter((t) => now - t < windowMs);
+    if (recent.length < max) {
+      recent.push(now);
+      windows.set(key, recent);
+      return;
+    }
     windows.set(key, recent);
-    throw new AngelOneError('RATE_LIMIT', 'Too many chart requests in the last minute. Wait a moment and try again.');
+    // Interactive callers fail fast; batch jobs (the daily signal run) wait for the budget to free up instead.
+    if (!patient) throw new AngelOneError('RATE_LIMIT', 'Too many chart requests in the last minute. Wait a moment and try again.');
+    await sleep(Math.min(windowMs, recent[0] + windowMs - now + 50) * rateGate.scale);
   }
-  recent.push(now);
-  windows.set(key, recent);
 }
 export const resetAngelOneWindows = () => windows.clear();
 
@@ -279,8 +284,8 @@ export const AngelOneClient = {
    * Historical candles. fromdate/todate are "yyyy-MM-dd HH:mm" in India time. Each record is documented as
    * [timestamp, open, high, low, close, volume]. Limits: 2/s, 40/min, 2000/h, and a maximum span per interval.
    */
-  async getCandles(exchange: 'NSE' | 'BSE', symbolToken: string, interval: CandleInterval, fromdate: string, todate: string): Promise<Candle[]> {
-    windowGuard('candles', 40, 60_000);
+  async getCandles(exchange: 'NSE' | 'BSE', symbolToken: string, interval: CandleInterval, fromdate: string, todate: string, opts: { patient?: boolean } = {}): Promise<Candle[]> {
+    await windowGuard('candles', 40, 60_000, opts.patient);
     const rows = await secure<any[]>('POST', '/rest/secure/angelbroking/historical/v1/getCandleData', 'candles', 550, { exchange, symboltoken: symbolToken, interval, fromdate, todate });
     return (rows || [])
       .filter((r) => Array.isArray(r) && r.length >= 5)

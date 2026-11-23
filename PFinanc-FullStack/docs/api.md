@@ -75,3 +75,22 @@ See [mcp.md](mcp.md) for the MCP endpoint (`POST /mcp`) and the connection manag
 ## Angel One
 
 See [angelone.md](angelone.md) for the `/api/integrations/angelone/*` endpoints.
+
+## Stock Signals (advisory only)
+
+Every response includes `disclaimer`: "Educational/technical signals only. Not investment advice. Do your own research."
+See [stock-signals.md](stock-signals.md) for the rules.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/signals/top-buys?limit=10` | Ranked buy candidates with levels and reasons |
+| GET | `/api/signals/holdings` | Signals, trailing stop, P&L for held stocks |
+| GET | `/api/signals/status` | Last run, whether a run is in progress |
+| GET | `/api/signals/settings` | Effective config and defaults |
+| PUT | `/api/signals/settings` | Owner/admin. `{ enabled?, config? }`, validated |
+| POST | `/api/signals/run` | Owner/admin. Starts a background update |
+| POST | `/api/signals/backtest` | Owner/admin. `{ symbols?, from?, to?, config? }` |
+| GET | `/api/signals/backtest/latest` | Most recent saved backtest |
+| GET | `/api/signals/:symbol` | Detail with chart series |
+| GET / POST | `/api/watchlist` | List / add `{ symbol }` |
+| DELETE | `/api/watchlist/:symbolOrId` | Remove |
