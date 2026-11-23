@@ -66,7 +66,7 @@ curl -s https://<host>/mcp \
 | `get_holding` | investments | One position: buy lots, realised P&L, dividends, recent trades |
 | `list_investment_transactions` | investments | Trades/SIPs/dividends over a window |
 | `get_portfolio_signals` | investments | Rule-based flags: overweight, deep losses, big winners, lots turning long-term, gaps to fill |
-| `get_live_quotes` | investments | Current prices for holdings or any NSE/BSE ticker, vs last stored price |
+| `get_live_quotes` | investments | Current prices for holdings or any NSE/BSE ticker, vs last stored price (uses Angel One first when [configured](angelone.md)) |
 | `get_market_snapshot` | investments | Nifty 50 and Sensex |
 | `get_latest_ai_report` | investments | Your latest in-app AI check-up |
 | `get_cashflow_summary` | cashflow | Monthly income/spend/savings and top categories |

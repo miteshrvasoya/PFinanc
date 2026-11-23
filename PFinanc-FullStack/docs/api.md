@@ -71,3 +71,7 @@ All under `/api/ai-advisor`, authenticated like the rest of the API.
 ## MCP
 
 See [mcp.md](mcp.md) for the MCP endpoint (`POST /mcp`) and the connection management API (`/api/mcp/*`).
+
+## Angel One
+
+See [angelone.md](angelone.md) for the `/api/integrations/angelone/*` endpoints.

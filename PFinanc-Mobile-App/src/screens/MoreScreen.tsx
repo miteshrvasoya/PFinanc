@@ -324,6 +324,19 @@ export const MoreScreen: React.FC<{ onNavigate?: (screen: string) => void }> = (
               <MaterialIcons name="chevron-right" size={20} color={colors.outline} />
             </Pressable>
             <View style={styles.divider} />
+            <Pressable style={styles.moduleItem} onPress={() => onNavigate && onNavigate('angelone')}>
+              <View style={styles.moduleItemLeft}>
+                <View style={styles.moduleIconBox}>
+                  <MaterialIcons name="electrical-services" size={22} color={colors.primaryContainer} />
+                </View>
+                <View>
+                  <Text style={styles.moduleItemTitle}>Angel One</Text>
+                  <Text style={styles.moduleItemDesc}>Live stock prices and demat holdings</Text>
+                </View>
+              </View>
+              <MaterialIcons name="chevron-right" size={20} color={colors.outline} />
+            </Pressable>
+            <View style={styles.divider} />
             <Pressable style={styles.moduleItem} onPress={() => onNavigate && onNavigate('smsReview')}>
               <View style={styles.moduleItemLeft}>
                 <View style={styles.moduleIconBox}>

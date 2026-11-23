@@ -120,6 +120,9 @@ export const PortfolioScreen: React.FC<PortfolioProps> = ({ onNavigate }) => {
           </View>
         </View>
         <View style={styles.headerRight}>
+          <Pressable style={styles.iconButton} onPress={() => onNavigate && onNavigate('angelone')} accessibilityLabel="Angel One sync">
+            <MaterialIcons name="sync" size={20} color={colors.onSurfaceVariant} />
+          </Pressable>
           <Pressable style={styles.iconButton} onPress={() => onNavigate && onNavigate('insights')}>
             <MaterialIcons name="insights" size={20} color={colors.onSurfaceVariant} />
           </Pressable>

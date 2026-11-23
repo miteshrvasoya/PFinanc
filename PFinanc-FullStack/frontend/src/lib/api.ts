@@ -718,6 +718,31 @@ class ApiClient {
     return this.request('/ai-advisor/notifications/read-all', { method: 'POST' });
   }
 
+  // ── Angel One (stocks & ETFs; mutual funds are not offered by SmartAPI) ──
+  async getAngelOneStatus() {
+    return this.request('/integrations/angelone/status');
+  }
+
+  async testAngelOne() {
+    return this.request('/integrations/angelone/test', { method: 'POST' });
+  }
+
+  async previewAngelOneHoldings() {
+    return this.request('/integrations/angelone/holdings');
+  }
+
+  async syncAngelOneHoldings() {
+    return this.request('/integrations/angelone/holdings/sync', { method: 'POST' });
+  }
+
+  async syncAngelOnePrices() {
+    return this.request('/integrations/angelone/prices/sync', { method: 'POST' });
+  }
+
+  async getAngelOneQuotes(symbols: string[], exchange: 'NSE' | 'BSE' = 'NSE') {
+    return this.request(`/integrations/angelone/quotes?symbols=${encodeURIComponent(symbols.join(','))}&exchange=${exchange}`);
+  }
+
   // ── AI chat ──
   async listAIChatSessions() {
     return this.request('/ai-advisor/chat/sessions');

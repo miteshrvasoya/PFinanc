@@ -12,7 +12,8 @@ import {
   Plus,
   Target,
   PiggyBank,
-  Settings
+  Settings,
+  PlugZap
 } from 'lucide-react';
 
 import Link from 'next/link';
@@ -35,6 +36,7 @@ export const Sidebar: React.FC<{ onQuickAction: () => void }> = ({ onQuickAction
     { id: 'analytics', href: '/analytics', label: 'Analytics', icon: <BarChart3 className="w-5 h-5" /> },
     { id: 'imports', href: '/imports', label: 'Imports', icon: <FileSpreadsheet className="w-5 h-5" /> },
     { id: 'ai-advisor', href: '/ai-advisor', label: 'AI Advisor', icon: <BotMessageSquare className="w-5 h-5" /> },
+    { id: 'integrations', href: '/integrations', label: 'Integrations', icon: <PlugZap className="w-5 h-5" /> },
   ];
 
   const renderNav = (items: typeof primaryNavItems) => (

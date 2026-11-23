@@ -1,5 +1,7 @@
 import { QueryHelper } from '../../../database/queryHelper.js';
 import { toLocalDateString } from '../../../utils/date.js';
+import { config } from '../../../config/env.js';
+import { AngelOneProvider } from '../../angelone/angelOneProvider.js';
 
 export interface MarketQuote {
   securityId: string;
@@ -11,6 +13,9 @@ export interface MarketQuote {
   currency: string;
   source: string;
   isStale: boolean;
+  previousClose?: number;
+  changePct?: number;
+  volume?: number;
 }
 
 export interface IMarketDataProvider {
@@ -253,12 +258,15 @@ export class IndianMarketDataProvider implements IMarketDataProvider {
 
 export class MarketDataService {
   /**
-   * Default chained provider: Yahoo Finance → MF API → Mock fallback
+   * Default chain: Angel One (stocks/ETFs, when configured) -> Yahoo Finance -> MF API (mutual funds).
+   * The synthetic demo-price provider is only added outside production: it fabricates prices, so a real
+   * deployment must show "no price" / stale rather than invented numbers.
    */
   private static provider: IMarketDataProvider = new ChainedMarketDataProvider([
+    new AngelOneProvider(), // no-op unless Angel One credentials are configured
     new YahooFinanceProvider(),
     new MFApiProvider(),
-    new IndianMarketDataProvider(),
+    ...(config.nodeEnv !== 'production' ? [new IndianMarketDataProvider()] : []),
   ]);
 
   static setProvider(customProvider: IMarketDataProvider) {
@@ -305,8 +313,8 @@ export class MarketDataService {
         const quote = quotesMap.get(sec.id);
         if (quote && quote.price > 0) {
           await QueryHelper.query(
-            `INSERT INTO security_prices (security_id, price_date, open, high, low, close, adjusted_close, currency, source, is_stale)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            `INSERT INTO security_prices (security_id, price_date, open, high, low, close, adjusted_close, currency, source, is_stale, volume)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
              ON CONFLICT (security_id, price_date) 
              DO UPDATE SET 
                close = EXCLUDED.close, 
@@ -314,6 +322,7 @@ export class MarketDataService {
                high = EXCLUDED.high,
                low = EXCLUDED.low,
                is_stale = EXCLUDED.is_stale,
+               volume = COALESCE(EXCLUDED.volume, security_prices.volume),
                source = EXCLUDED.source`,
             [
               sec.id,
@@ -326,6 +335,7 @@ export class MarketDataService {
               quote.currency || 'INR',
               quote.source,
               quote.isStale,
+              quote.volume ? Math.round(quote.volume) : null,
             ]
           );
           updatedCount++;

@@ -37,6 +37,22 @@ export const config = {
     geminiApiKey: process.env.GEMINI_API_KEY,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
   },
+  // Angel One SmartAPI (https://smartapi.angelone.in). Credentials live only in the backend .env.
+  angelOne: {
+    baseUrl: (process.env.ANGELONE_BASE_URL || 'https://apiconnect.angelone.in').replace(/\/+$/, ''),
+    apiKey: process.env.ANGELONE_API_KEY || '',
+    clientCode: process.env.ANGELONE_CLIENT_CODE || '',
+    pin: process.env.ANGELONE_PIN || '',
+    totpSecret: (process.env.ANGELONE_TOTP_SECRET || '').replace(/\s+/g, ''),
+    // Required request headers; Angel One does not verify them for read-only calls, so defaults are fine.
+    localIp: process.env.ANGELONE_LOCAL_IP || '127.0.0.1',
+    publicIp: process.env.ANGELONE_PUBLIC_IP || '127.0.0.1',
+    macAddress: process.env.ANGELONE_MAC_ADDRESS || '00:00:00:00:00:00',
+    // The one household allowed to use this broker login. Unset = the oldest household (the installer's).
+    householdId: process.env.ANGELONE_HOUSEHOLD_ID || '',
+    autoRefreshPrices: process.env.ANGELONE_AUTO_REFRESH !== 'false',
+    priceRefreshMinutes: Math.max(5, parseInt(process.env.ANGELONE_PRICE_REFRESH_MINUTES || '15', 10) || 15),
+  },
   aiAdvisor: {
     defaultSchedule: process.env.AI_ADVISOR_DEFAULT_SCHEDULE || '30 3 * * *',
     enabled: process.env.AI_ADVISOR_ENABLED !== 'false',
