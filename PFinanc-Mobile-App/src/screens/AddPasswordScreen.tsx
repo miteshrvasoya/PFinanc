@@ -10,7 +10,7 @@ export const AddPasswordScreen: React.FC<{ onBack?: () => void; onNavigate?: (sc
 
   const [serviceName, setServiceName] = useState('HDFC NetBanking');
   const [category, setCategory] = useState('Banking');
-  const [username, setUsername] = useState('mitesh.pandya@email.com');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('Tr@nqu1l!PFin#2025');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [showOptional, setShowOptional] = useState(true);
@@ -54,7 +54,7 @@ export const AddPasswordScreen: React.FC<{ onBack?: () => void; onNavigate?: (sc
                     <Text style={styles.ownerRoleBadgeText}>Owner</Text>
                   </View>
                 </View>
-                <Text style={styles.ownerName}>You (Mitesh)</Text>
+                <Text style={styles.ownerName}>You</Text>
               </View>
             </View>
             <View style={styles.policyRight}>

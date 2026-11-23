@@ -4,41 +4,41 @@ import { pool } from '../src/database/db.js';
 import { runMigrations } from '../src/database/migrate.js';
 import { runSeed } from '../src/database/seed.js';
 
-let miteshToken = '';
-let fatherToken = '';
+let ownerToken = '';
+let adminToken = '';
 let householdId = '';
-let miteshHdfcId = '';
-let fatherSbiId = '';
+let ownerHdfcId = '';
+let adminSbiId = '';
 
 beforeAll(async () => {
   await runMigrations();
   await runSeed();
 
-  // Login as Mitesh
+  // Login as Owner
   const mRes = await request(app).post('/api/auth/login').send({
-    email: 'mitesh@pfinanc.local',
+    email: 'owner@pfinanc.local',
     password: 'Password@123',
   });
-  miteshToken = mRes.body.data.token;
+  ownerToken = mRes.body.data.token;
   householdId = mRes.body.data.defaultHouseholdId;
 
-  // Login as Father
+  // Login as Admin
   const fRes = await request(app).post('/api/auth/login').send({
-    email: 'father@pfinanc.local',
+    email: 'admin@pfinanc.local',
     password: 'Password@123',
   });
-  fatherToken = fRes.body.data.token;
+  adminToken = fRes.body.data.token;
 
   // Get Accounts
   const accRes = await request(app)
     .get('/api/accounts')
-    .set('Authorization', `Bearer ${miteshToken}`)
+    .set('Authorization', `Bearer ${ownerToken}`)
     .set('x-household-id', householdId);
 
   const hdfc = accRes.body.data.find((a: any) => a.name.includes('HDFC'));
-  const sbi = accRes.body.data.find((a: any) => a.name.includes('Father - SBI'));
-  miteshHdfcId = hdfc.id;
-  fatherSbiId = sbi.id;
+  const sbi = accRes.body.data.find((a: any) => a.name.includes('Admin - SBI'));
+  ownerHdfcId = hdfc.id;
+  adminSbiId = sbi.id;
 });
 
 afterAll(async () => {
@@ -49,7 +49,7 @@ describe('Financial Ledger & Accounting Integrity Tests', () => {
   test('Dashboard computes initial net worth and balances correctly', async () => {
     const res = await request(app)
       .get('/api/dashboard?view=household')
-      .set('Authorization', `Bearer ${miteshToken}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId);
 
     expect(res.status).toBe(200);
@@ -62,18 +62,18 @@ describe('Financial Ledger & Accounting Integrity Tests', () => {
   test('Creating Expense decreases account balance and increases monthly expenses', async () => {
     // 1. Get current balance
     const accBefore = await request(app)
-      .get(`/api/accounts/${miteshHdfcId}`)
-      .set('Authorization', `Bearer ${miteshToken}`)
+      .get(`/api/accounts/${ownerHdfcId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId);
     const balanceBefore = accBefore.body.data.current_balance;
 
     // 2. Add expense of ₹500
     const txRes = await request(app)
       .post('/api/transactions')
-      .set('Authorization', `Bearer ${miteshToken}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId)
       .send({
-        account_id: miteshHdfcId,
+        account_id: ownerHdfcId,
         transaction_type: 'EXPENSE',
         amount: 500,
         description: 'Test Coffee Purchase',
@@ -84,8 +84,8 @@ describe('Financial Ledger & Accounting Integrity Tests', () => {
 
     // 3. Verify new balance
     const accAfter = await request(app)
-      .get(`/api/accounts/${miteshHdfcId}`)
-      .set('Authorization', `Bearer ${miteshToken}`)
+      .get(`/api/accounts/${ownerHdfcId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId);
     expect(accAfter.body.data.current_balance).toBe(balanceBefore - 500);
   });
@@ -94,31 +94,31 @@ describe('Financial Ledger & Accounting Integrity Tests', () => {
     // 1. Get initial metrics
     const dashBefore = await request(app)
       .get('/api/dashboard?view=household')
-      .set('Authorization', `Bearer ${miteshToken}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId);
 
     const netWorthBefore = dashBefore.body.data.netWorth.netWorth;
     const incomeBefore = dashBefore.body.data.thisMonth.income;
     const expenseBefore = dashBefore.body.data.thisMonth.expenses;
 
-    const miteshAccBefore = await request(app)
-      .get(`/api/accounts/${miteshHdfcId}`)
-      .set('Authorization', `Bearer ${miteshToken}`)
+    const ownerAccBefore = await request(app)
+      .get(`/api/accounts/${ownerHdfcId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId);
 
-    const fatherAccBefore = await request(app)
-      .get(`/api/accounts/${fatherSbiId}`)
-      .set('Authorization', `Bearer ${miteshToken}`)
+    const adminAccBefore = await request(app)
+      .get(`/api/accounts/${adminSbiId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId);
 
-    // 2. Perform transfer of ₹5,000 from Mitesh to Father
+    // 2. Perform transfer of ₹5,000 from Owner to Admin
     const transferRes = await request(app)
       .post('/api/transfers')
-      .set('Authorization', `Bearer ${miteshToken}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId)
       .send({
-        source_account_id: miteshHdfcId,
-        destination_account_id: fatherSbiId,
+        source_account_id: ownerHdfcId,
+        destination_account_id: adminSbiId,
         amount: 5000,
         description: 'Automated Test Family Support',
         status: 'CONFIRMED',
@@ -128,23 +128,23 @@ describe('Financial Ledger & Accounting Integrity Tests', () => {
     expect(transferRes.body.success).toBe(true);
 
     // 3. Check individual account balance changes
-    const miteshAccAfter = await request(app)
-      .get(`/api/accounts/${miteshHdfcId}`)
-      .set('Authorization', `Bearer ${miteshToken}`)
+    const ownerAccAfter = await request(app)
+      .get(`/api/accounts/${ownerHdfcId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId);
 
-    const fatherAccAfter = await request(app)
-      .get(`/api/accounts/${fatherSbiId}`)
-      .set('Authorization', `Bearer ${miteshToken}`)
+    const adminAccAfter = await request(app)
+      .get(`/api/accounts/${adminSbiId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId);
 
-    expect(miteshAccAfter.body.data.current_balance).toBe(miteshAccBefore.body.data.current_balance - 5000);
-    expect(fatherAccAfter.body.data.current_balance).toBe(fatherAccBefore.body.data.current_balance + 5000);
+    expect(ownerAccAfter.body.data.current_balance).toBe(ownerAccBefore.body.data.current_balance - 5000);
+    expect(adminAccAfter.body.data.current_balance).toBe(adminAccBefore.body.data.current_balance + 5000);
 
     // 4. Verify Household Net Worth and Income/Expense invariant
     const dashAfter = await request(app)
       .get('/api/dashboard?view=household')
-      .set('Authorization', `Bearer ${miteshToken}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId);
 
     expect(dashAfter.body.data.netWorth.netWorth).toBeCloseTo(netWorthBefore, 2);
@@ -154,18 +154,18 @@ describe('Financial Ledger & Accounting Integrity Tests', () => {
 
   test('Draft and Voided transactions do not impact account balances', async () => {
     const accBefore = await request(app)
-      .get(`/api/accounts/${miteshHdfcId}`)
-      .set('Authorization', `Bearer ${miteshToken}`)
+      .get(`/api/accounts/${ownerHdfcId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId);
     const balanceBefore = accBefore.body.data.current_balance;
 
     // Create DRAFT transaction
     const draftTx = await request(app)
       .post('/api/transactions')
-      .set('Authorization', `Bearer ${miteshToken}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId)
       .send({
-        account_id: miteshHdfcId,
+        account_id: ownerHdfcId,
         transaction_type: 'EXPENSE',
         amount: 9999,
         description: 'Draft unconfirmed purchase candidate',
@@ -176,20 +176,20 @@ describe('Financial Ledger & Accounting Integrity Tests', () => {
 
     // Balance should remain completely unchanged
     const accAfterDraft = await request(app)
-      .get(`/api/accounts/${miteshHdfcId}`)
-      .set('Authorization', `Bearer ${miteshToken}`)
+      .get(`/api/accounts/${ownerHdfcId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId);
     expect(accAfterDraft.body.data.current_balance).toBe(balanceBefore);
 
     // Void the draft
     await request(app)
       .post(`/api/transactions/${draftTx.body.data.id}/void`)
-      .set('Authorization', `Bearer ${miteshToken}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId);
 
     const accAfterVoid = await request(app)
-      .get(`/api/accounts/${miteshHdfcId}`)
-      .set('Authorization', `Bearer ${miteshToken}`)
+      .get(`/api/accounts/${ownerHdfcId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-household-id', householdId);
     expect(accAfterVoid.body.data.current_balance).toBe(balanceBefore);
   });

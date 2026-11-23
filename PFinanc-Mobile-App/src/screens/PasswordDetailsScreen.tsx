@@ -131,7 +131,7 @@ export const PasswordDetailsScreen: React.FC<{ onBack?: () => void; onNavigate?:
               </View>
               <View>
                 <Text style={styles.ownerLabelText}>Owner</Text>
-                <Text style={styles.ownerNameText}>You (Mitesh Pandya)</Text>
+                <Text style={styles.ownerNameText}>You</Text>
               </View>
             </View>
             <View style={styles.primaryOwnerPill}>
@@ -167,7 +167,7 @@ export const PasswordDetailsScreen: React.FC<{ onBack?: () => void; onNavigate?:
           <View style={styles.fieldCard}>
             <View style={{ flex: 1 }}>
               <Text style={styles.fieldLabel}>Username / Customer ID</Text>
-              <Text style={styles.fieldValue}>mitesh.pandya@email.com</Text>
+              <Text style={styles.fieldValue}>you@example.com</Text>
             </View>
             <TouchableOpacity style={styles.copyBtn}>
               <MaterialIcons name="content-copy" size={19} color={colors.primary} />

@@ -11,7 +11,7 @@ export const VaultReadyScreen: React.FC<{ onBack?: () => void; onNavigate?: (scr
       <View style={styles.header}>
         <View style={styles.contextPill}>
           <View style={styles.contextDot} />
-          <Text style={styles.contextText}>Pandya Family • Personal Vault Active</Text>
+          <Text style={styles.contextText}>My Family • Personal Vault Active</Text>
         </View>
         <View style={styles.shieldIcon}>
           <MaterialIcons name="security" size={18} color={colors.primaryContainer} />

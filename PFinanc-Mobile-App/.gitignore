@@ -33,6 +33,7 @@ yarn-error.*
 # local env files (keep .env.example tracked)
 .env
 .env.*
+.env*.local
 !.env.example
 
 # typescript
@@ -45,3 +46,8 @@ yarn-error.*
 # Google Stitch Files
 stitch_*
 stitch/*
+
+
+
+# Secrets / signing
+google-service-account.json

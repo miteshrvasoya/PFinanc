@@ -99,7 +99,7 @@ describe('generateReport', () => {
 describe('analysis context', () => {
   test('contains computed cash-flow facts but no narrations or merchant names', async () => {
     const u = await QueryHelper.queryOne<any>(
-      `SELECT u.id, hm.household_id FROM users u JOIN household_members hm ON hm.user_id = u.id WHERE u.email = 'mitesh@pfinanc.local'`
+      `SELECT u.id, hm.household_id FROM users u JOIN household_members hm ON hm.user_id = u.id WHERE u.email = 'owner@pfinanc.local'`
     );
     const acc = await QueryHelper.queryOne<any>(`SELECT id FROM accounts WHERE household_id = $1 AND owner_user_id = $2 AND account_type = 'BANK' LIMIT 1`, [u.household_id, u.id]);
     const today = new Date();

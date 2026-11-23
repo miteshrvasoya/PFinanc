@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Home, User, LogOut, ChevronDown, Sparkles, Bell, BotMessageSquare, CheckCheck } from 'lucide-react';
+import { Home, User, LogOut, ChevronDown, Bell, BotMessageSquare, CheckCheck } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '../../lib/api';
 
 export const Header: React.FC = () => {
-  const { user, households, currentHousehold, viewMode, setViewMode, switchHousehold, logout, switchDemoUser } = useAuth();
+  const { user, households, currentHousehold, viewMode, setViewMode, switchHousehold, logout } = useAuth();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -36,12 +36,6 @@ export const Header: React.FC = () => {
     setShowNotifDropdown(false);
   };
 
-  const demoUsers = [
-    { email: 'mitesh@pfinanc.local', label: 'Mitesh (Owner)', role: 'OWNER' },
-    { email: 'father@pfinanc.local', label: 'Father (Admin)', role: 'ADMIN' },
-    { email: 'mother@pfinanc.local', label: 'Mother (Member)', role: 'MEMBER' },
-  ];
-
   return (
     <header className="h-16 bg-[#0d1322]/80 backdrop-blur-md border-b border-slate-800/80 px-6 flex items-center justify-between z-10 sticky top-0">
       {/* Left: Household selector & View Switcher */}
@@ -49,7 +43,7 @@ export const Header: React.FC = () => {
         {/* Household Dropdown */}
         <div className="relative flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-sm">
           <Home className="w-4 h-4 text-indigo-400" />
-          <span className="font-semibold text-white">{currentHousehold?.name || 'Vasoya Family'}</span>
+          <span className="font-semibold text-white">{currentHousehold?.name || 'My Household'}</span>
           <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
             {currentHousehold?.role || 'OWNER'}
           </span>
@@ -149,30 +143,6 @@ export const Header: React.FC = () => {
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Demo Switcher */}
-          <div className="hidden lg:flex items-center gap-1.5 bg-slate-900/60 p-1 rounded-lg border border-slate-800/60 text-xs">
-            <div className="flex items-center gap-1 px-2 text-slate-400 font-medium text-[11px]">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Switch Role:</span>
-            </div>
-            {demoUsers.map((du) => {
-              const isCurrent = user?.email === du.email;
-              return (
-                <button
-                  key={du.email}
-                  onClick={() => switchDemoUser(du.email)}
-                  className={`px-2.5 py-1 rounded text-xs transition-all ${
-                    isCurrent
-                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/50 font-semibold'
-                      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                  }`}
-                >
-                  {du.label}
-                </button>
-              );
-            })}
           </div>
 
           {/* User Card */}

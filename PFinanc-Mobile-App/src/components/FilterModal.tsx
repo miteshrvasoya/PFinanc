@@ -101,7 +101,7 @@ export const FilterModal: React.FC<FilterModalProps> = ({ visible, onClose }) =>
                   <View style={[styles.memberAvatar, { backgroundColor: colors.primaryContainer }]}>
                     <Text style={[styles.memberAvatarText, { color: colors.onPrimary }]}>M</Text>
                   </View>
-                  <Text style={styles.memberText} numberOfLines={1}>Mitesh</Text>
+                  <Text style={styles.memberText} numberOfLines={1}>You</Text>
                 </Pressable>
                 <Pressable style={styles.memberBtn}>
                   <View style={[styles.memberAvatar, { backgroundColor: colors.secondary }]}>

@@ -1,4 +1,25 @@
-# Google Stitch Files
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies & build output
+node_modules/
+dist/
+.next/
+
+# AI-assistant local config
+.claude/
+CLAUDE.md
+AGENTS.md
+
+# Design tool exports
 stitch_*
 
 # Environment files (any folder) - keep only *.env.example templates tracked

@@ -242,7 +242,7 @@ export const AuditLogScreen: React.FC<{ onBack?: () => void; onNavigate?: (scree
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.auditCardTitle}>CAMS_CAS_Consolidated_Sep2024.pdf</Text>
-                    <Text style={styles.auditCardDesc}>Vasoya Family Portfolio (Mutual Funds)</Text>
+                    <Text style={styles.auditCardDesc}>Family Portfolio (Mutual Funds)</Text>
                   </View>
                 </View>
                 <View style={styles.statusBadgeSynced}>

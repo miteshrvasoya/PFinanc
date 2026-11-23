@@ -24,7 +24,7 @@ export const FamilyMemberScreen: React.FC<{ onBack?: () => void; onNavigate?: (s
             <MaterialIcons name="arrow-back" size={24} color={colors.primary} />
           </Pressable>
           <View>
-            <Text style={styles.headerSubtitle}>VASOYA FAMILY VAULT</Text>
+            <Text style={styles.headerSubtitle}>FAMILY VAULT</Text>
             <Text style={styles.headerTitle}>Member Details & Access</Text>
           </View>
         </View>
@@ -45,10 +45,7 @@ export const FamilyMemberScreen: React.FC<{ onBack?: () => void; onNavigate?: (s
           <View style={styles.profileRow}>
             <View style={styles.avatarContainer}>
               <View style={styles.avatarBox}>
-                <Image 
-                  source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuC7253awpiQiC19OYPVFwDEctnr72GusqqIh5Y6W9k9MchTAkzc-df0k8-D6Vfv6QDm_kTAX5RDzXEAEZhqm9w_lq-KCYMglS5RlP8SlZ41lg_YB7YBDjCgGJSTqOS_rWT85IuZi1i4QPMBvkWQE4J3gM9jZzGUzvBtMs0aBxFJ5JBYfDN_SCHVCzrPGJTYhQPplXcrcme43JzUBQVUBE8UCpu8uIEgBQwgo7zwibghYhUE7CuRN8c-MA' }}
-                  style={styles.avatarImage}
-                />
+                <View style={[styles.avatarImage, { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryFixed }]}><MaterialIcons name="person" size={22} color={colors.primary} /></View>
               </View>
               <View style={styles.onlineDotBorder}>
                 <View style={styles.onlineDot} />
@@ -56,12 +53,12 @@ export const FamilyMemberScreen: React.FC<{ onBack?: () => void; onNavigate?: (s
             </View>
             <View style={styles.profileInfo}>
               <View style={styles.nameRow}>
-                <Text style={styles.profileName} numberOfLines={1}>Disha Vasoya</Text>
+                <Text style={styles.profileName} numberOfLines={1}>Family Member</Text>
                 <View style={styles.roleBadge}>
                   <Text style={styles.roleBadgeText}>Co-Manager</Text>
                 </View>
               </View>
-              <Text style={styles.profileContact}>disha@vasoya.family • +91 98201 •••••</Text>
+              <Text style={styles.profileContact}>member@example.com</Text>
               <View style={styles.syncRow}>
                 <MaterialIcons name="sync" size={12} color={colors.outline} />
                 <Text style={styles.syncText}>Active • Last synced 2 hours ago</Text>
@@ -85,7 +82,7 @@ export const FamilyMemberScreen: React.FC<{ onBack?: () => void; onNavigate?: (s
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Financial Boundary</Text>
-            <Text style={styles.sectionSubtitle}>Vasoya Household Pool</Text>
+            <Text style={styles.sectionSubtitle}>Household Pool</Text>
           </View>
           
           <View style={styles.gridContainer}>
@@ -130,7 +127,7 @@ export const FamilyMemberScreen: React.FC<{ onBack?: () => void; onNavigate?: (s
         {/* Permissions & Authority */}
         <View style={styles.permissionsCard}>
           <Text style={styles.sectionTitle}>Permissions & Authority</Text>
-          <Text style={styles.sectionDesc}>Control what Disha can view, approve, or edit in the household ledger.</Text>
+          <Text style={styles.sectionDesc}>Control what this member can view, approve, or edit in the household ledger.</Text>
 
           <View style={styles.roleSwitcherWrapper}>
             <Text style={styles.roleSwitcherLabel}>VAULT ROLE LEVEL</Text>
@@ -195,7 +192,7 @@ export const FamilyMemberScreen: React.FC<{ onBack?: () => void; onNavigate?: (s
                   <Text style={styles.permissionTitle}>Bank & Statement Imports</Text>
                   <MaterialIcons name="lock" size={14} color={colors.outline} />
                 </View>
-                <Text style={styles.permissionDesc}>Only Primary Admin (Mitesh Vasoya) can upload raw bank statements or OTP-bind feeds.</Text>
+                <Text style={styles.permissionDesc}>Only the Primary Admin can upload raw bank statements or OTP-bind feeds.</Text>
               </View>
               <Switch 
                 value={false} 
