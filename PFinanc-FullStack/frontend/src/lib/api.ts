@@ -731,6 +731,20 @@ class ApiClient {
     return this.request(`/investments/holdings/${encodeURIComponent(symbol)}/buy-date`, { method: 'DELETE' });
   }
 
+  // ── Stock signals (advisory only: no order placement exists anywhere) ──
+  async getSignalsStatus() { return this.request('/signals/status'); }
+  async getTopBuys(limit = 10) { return this.request(`/signals/top-buys?limit=${limit}`); }
+  async getHoldingSignals() { return this.request('/signals/holdings'); }
+  async getSignalDetail(symbol: string) { return this.request(`/signals/${encodeURIComponent(symbol)}`); }
+  async getSignalSettings() { return this.request('/signals/settings'); }
+  async updateSignalSettings(body: { enabled?: boolean; config?: any }) { return this.request('/signals/settings', { method: 'PUT', body: JSON.stringify(body) }); }
+  async runSignals() { return this.request('/signals/run', { method: 'POST' }); }
+  async runSignalBacktest(body: { symbols?: string[]; from?: string; to?: string } = {}) { return this.request('/signals/backtest', { method: 'POST', body: JSON.stringify(body) }); }
+  async getLatestBacktest() { return this.request('/signals/backtest/latest'); }
+  async getWatchlist() { return this.request('/watchlist'); }
+  async addToWatchlist(symbol: string) { return this.request('/watchlist', { method: 'POST', body: JSON.stringify({ symbol }) }); }
+  async removeFromWatchlist(symbol: string) { return this.request(`/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' }); }
+
   // ── Angel One (stocks & ETFs; mutual funds are not offered by SmartAPI) ──
   async getAngelOneStatus() {
     return this.request('/integrations/angelone/status');

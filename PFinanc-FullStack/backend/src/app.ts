@@ -23,6 +23,8 @@ import { statementImportsRoutes } from './modules/statement-imports/statementImp
 import { aiAdvisorRouter } from './modules/ai-advisor/aiAdvisor.routes.js';
 import { angelOneRouter } from './modules/angelone/angelOne.routes.js';
 import { AngelOneScheduler } from './modules/angelone/angelOneScheduler.js';
+import { signalsRouter, watchlistRouter } from './modules/signals/signals.routes.js';
+import { SignalsScheduler } from './modules/signals/signalsScheduler.js';
 import { mcpManagementRouter } from './modules/mcp/mcp.routes.js';
 import { handleMcpRequest } from './modules/mcp/mcpHttp.js';
 import { automationRouter } from './modules/automation/automation.routes.js';
@@ -79,6 +81,8 @@ app.use('/api/budgets', budgetsRouter);
 app.use('/api/rent', rentRouter);
 app.use('/api/mcp', mcpManagementRouter);
 app.use('/api/integrations/angelone', angelOneRouter);
+app.use('/api/signals', signalsRouter);
+app.use('/api/watchlist', watchlistRouter);
 
 // MCP server endpoint for external AI assistants (Claude, ChatGPT, ...). Auth is its own access token, not the app JWT.
 app.all('/mcp', handleMcpRequest);
@@ -101,6 +105,7 @@ if (process.env.NODE_ENV !== 'test') {
         console.log(`PFinanc Backend API server listening on http://0.0.0.0:${PORT}`);
         AIAdvisorScheduler.start();
         AngelOneScheduler.start();
+        SignalsScheduler.start();
       });
     } catch (err) {
       console.error('Failed to initialize database on startup:', err);
