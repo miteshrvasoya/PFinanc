@@ -14,7 +14,7 @@ import { ServerSettingsModal } from '../components/ServerSettingsModal';
 export const LoginScreen = () => {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
-  const passwordRef = useRef<TextInput>(null);
+  const passwordRef = useRef<React.ComponentRef<typeof TextInput>>(null);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

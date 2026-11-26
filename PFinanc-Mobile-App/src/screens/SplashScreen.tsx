@@ -59,7 +59,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onAnimationFinish })
 
   return (
     <Animated.View style={[styles.root, { opacity: screenOpacity }]}>
-      <StatusBar backgroundColor={colors.primary} barStyle="light-content" />
+      <StatusBar barStyle="light-content" />
       <LinearGradient
         colors={[colors.primaryContainer, colors.primary, '#00110b']}
         start={{ x: 0.1, y: 0 }}
