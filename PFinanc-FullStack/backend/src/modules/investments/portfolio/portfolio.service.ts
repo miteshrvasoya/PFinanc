@@ -2,6 +2,7 @@ import { QueryHelper } from '../../../database/queryHelper.js';
 import { HoldingsService } from '../holdings/holdings.service.js';
 import { FixedDepositsService } from '../fixed-deposits/fixedDeposits.service.js';
 import { RetirementService } from '../retirement/retirement.service.js';
+import { PreciousMetalsService } from '../../precious-metals/preciousMetals.service.js';
 
 export interface CashFlow {
   amount: number;
@@ -88,7 +89,7 @@ export class PortfolioService {
     `;
     const physicalParams = userId ? [householdId, userId] : [householdId];
 
-    const [holdings, fds, retirementAccounts, rawTxns, physicalSummary] = await Promise.all([
+    const [holdings, fds, retirementAccounts, rawTxns, physicalSummary, metals] = await Promise.all([
       HoldingsService.calculateHoldings({ householdId, userId }),
       FixedDepositsService.list(householdId, userId),
       RetirementService.listAccounts(householdId, userId),
@@ -105,6 +106,7 @@ export class PortfolioService {
         physicalSql,
         physicalParams
       ),
+      PreciousMetalsService.portfolioTotals(householdId, userId),
     ]);
 
     // 1. Asset Breakdown
@@ -150,6 +152,11 @@ export class PortfolioService {
         otherTangibleValue += p.total_value || 0;
       }
     });
+
+    // Precious metals module (raw and jewellery). Counted with the gold bucket; unvalued items are at cost.
+    physicalInvested += metals.invested;
+    physicalValue += metals.value;
+    goldValue += metals.value;
 
     const totalInvested = stockInvested + mfInvested + etfInvested + fdPrincipal + retirementTotal + physicalInvested;
     const totalCurrentValue = stockValue + mfValue + etfValue + fdCurrentValue + retirementTotal + physicalValue;
@@ -247,7 +254,7 @@ export class PortfolioService {
         holdingsCount: holdings.filter((h) => h.current_quantity > 0).length,
         fdCount: fds.filter((f) => f.status === 'ACTIVE').length,
         retirementCount: retirementAccounts.length,
-        physicalAssetsCount: physicalSummary.length,
+        physicalAssetsCount: physicalSummary.length + metals.count,
       },
       breakdown: {
         stocks: { invested: stockInvested, value: stockValue, pnl: stockValue - stockInvested },
@@ -256,6 +263,7 @@ export class PortfolioService {
         fixedDeposits: { principal: fdPrincipal, value: fdCurrentValue, interest: fdCurrentValue - fdPrincipal },
         retirement: { total: retirementTotal },
         physicalAssets: { invested: physicalInvested, value: physicalValue, goldValue, otherTangibleValue },
+        preciousMetals: { invested: metals.invested, value: metals.value, count: metals.count, byMetal: metals.by_metal, unvaluedCount: metals.unvalued_count },
       },
       assetAllocation,
       topHoldings: holdings.filter((h) => h.current_quantity > 0).slice(0, 6),

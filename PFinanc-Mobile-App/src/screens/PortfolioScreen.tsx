@@ -208,6 +208,10 @@ export const PortfolioScreen: React.FC<PortfolioProps> = ({ onNavigate }) => {
               <MaterialIcons name="account-balance" size={20} color={colors.primary} />
               <Text style={styles.actionTileText}>Accounts</Text>
             </Pressable>
+            <Pressable style={styles.actionTile} onPress={() => onNavigate && onNavigate('metals')} accessibilityLabel="Gold and silver">
+              <MaterialIcons name="diamond" size={20} color={colors.primary} />
+              <Text style={styles.actionTileText}>Gold</Text>
+            </Pressable>
           </View>
 
           {/* Top / worst performer */}

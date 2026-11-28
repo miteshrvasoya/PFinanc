@@ -139,5 +139,6 @@ export const apiClient = {
   get: (endpoint: string, headers: any = {}) => request('GET', endpoint, undefined, headers),
   post: (endpoint: string, body: any, headers: any = {}) => request('POST', endpoint, body, headers),
   put: (endpoint: string, body: any, headers: any = {}) => request('PUT', endpoint, body, headers),
+  patch: (endpoint: string, body: any, headers: any = {}) => request('PATCH', endpoint, body, headers),
   delete: (endpoint: string, headers: any = {}) => request('DELETE', endpoint, undefined, headers),
 };

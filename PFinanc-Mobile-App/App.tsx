@@ -28,6 +28,7 @@ import { AIAdvisorScreen } from './src/screens/AIAdvisorScreen';
 import { McpSetupScreen } from './src/screens/McpSetupScreen';
 import { AngelOneScreen } from './src/screens/AngelOneScreen';
 import { SignalsScreen } from './src/screens/SignalsScreen';
+import { MetalsScreen } from './src/screens/MetalsScreen';
 import { StatementImportScreen } from './src/screens/StatementImportScreen';
 import { SecurityScreen } from './src/screens/SecurityScreen';
 import { FamilyMemberScreen } from './src/screens/FamilyMemberScreen';
@@ -118,6 +119,7 @@ const MainNavigator = () => {
       {activeScreen === 'insights' && <InsightsScreen onBack={() => setActiveScreen('none')} />}
       {activeScreen === 'budgets' && <BudgetsScreen onBack={() => setActiveScreen('none')} />}
       {activeScreen === 'advisor' && <AIAdvisorScreen onBack={() => setActiveScreen('none')} onNavigate={navigate} />}
+      {activeScreen === 'metals' && <MetalsScreen onBack={() => setActiveScreen('none')} />}
       {activeScreen === 'signals' && <SignalsScreen onBack={() => setActiveScreen('none')} />}
       {activeScreen === 'angelone' && <AngelOneScreen onBack={() => setActiveScreen('none')} />}
       {activeScreen === 'mcp' && <McpSetupScreen onBack={() => setActiveScreen(mcpReturnTo)} />}
