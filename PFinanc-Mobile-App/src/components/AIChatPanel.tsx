@@ -49,7 +49,7 @@ export const AIChatPanel: React.FC<Props> = ({ onOpenSettings, onOpenConnect, pr
   const [error, setError] = useState<string | null>(null);
   const [configIssue, setConfigIssue] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
 
   const scrollToEnd = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
 
